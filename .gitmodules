@@ -1,0 +1,4 @@
+[submodule "mqas"]
+	path = mqas
+	url = git@github.com:wu1274704958/test_xquic.git
+	branch = lsquic
