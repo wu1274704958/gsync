@@ -3,8 +3,5 @@ add_library(gsync_e1 SHARED lib.cpp)
 
 add_dependencies(gsync_e1 mqas)
 
-target_link_libraries(gsync_e1 PRIVATE
-        lsquic::lsquic
-        lsquic
-        mqas)
+target_link_libraries(gsync_e1 PUBLIC mqas)
 

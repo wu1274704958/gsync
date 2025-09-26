@@ -6,6 +6,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES MSVC)
 endif()
 
 set(BUILD_MQAS_EXAMPLES OFF CACHE BOOL "Compile mqas examples" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static mqas" FORCE)
 
 add_subdirectory(mqas)
 
