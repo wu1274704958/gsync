@@ -1,4 +1,6 @@
-int add()
+#include "example1.h"
+
+int test(int a)
 {
-    return 1;
+    return a * 7;
 }

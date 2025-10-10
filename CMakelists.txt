@@ -4,10 +4,15 @@ include("SetupVCPKG")
 cmake_minimum_required(VERSION 3.20.0)
 project(gsync VERSION 0.1.0)
 
+include("SetupOutputDir")
 
 if(CMAKE_CXX_COMPILER_ID MATCHES MSVC)
   add_compile_options("/permissive-")
 endif()
+
+add_compile_definitions(-DBUILDING_GSYNC_SHARED=1)
+
+include_directories("${CMAKE_SOURCE_DIR}/include")
 
 set(BUILD_MQAS_EXAMPLES OFF CACHE BOOL "Compile mqas examples" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static mqas" FORCE)
