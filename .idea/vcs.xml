@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/build-Debug/_deps/absl-src" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/mqas" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/mqas/third_party/easyloggingpp" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/mqas/third_party/lsquic" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/mqas/third_party/lsquic/src/liblsquic/ls-qpack" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/mqas/third_party/lsquic/src/lshpack" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/mqas/third_party/protobuf" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/mqas/third_party/webrtc-audio-processing" vcs="Git" />
+  </component>
+</project>
