@@ -3,6 +3,8 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/build-Debug/_deps/absl-src" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cmake-build-debug-visual-studio/_deps/absl-src" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cmake-build-release-visual-studio/_deps/absl-src" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/mqas" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/mqas/third_party/easyloggingpp" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/mqas/third_party/lsquic" vcs="Git" />
