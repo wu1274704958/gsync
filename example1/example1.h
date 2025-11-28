@@ -12,10 +12,13 @@ extern "C" {
 
     enum ErrorCode {
         EC_Ok = 0,
+        EC_ErrorBegin = 1000,
         EC_AlreadyInitialized,
         EC_NotInitialized,
         EC_EngineCountLimitExceeded,
         EC_InvalidAddress,
+        EC_Disconnected,
+        EC_InvalidHandler,
     };
 
     struct PeerData {
@@ -25,14 +28,15 @@ extern "C" {
 
     typedef void(*SICallback)(const char*,int);
     typedef void(*ICallback)(int);
+    typedef void(*IUICallback)(int,unsigned int);
     typedef void(*PDCallback)(struct PeerData*);
 
     int GSYNC_EXTERN GSY_initialize(int flag,SICallback error_callback);
     int GSYNC_EXTERN GSY_terminate();
 
-    int GSYNC_EXTERN GSY_connect_hole_punching_server(const char* config_file,const char* name,const char* psd,ICallback callback,PDCallback req_connect_cb);
-    int GSYNC_EXTERN GSY_disconnect_hole_punching_server(int handler);
-    int GSYNC_EXTERN GSY_is_connected_hole_punching_server(int handler);
+    unsigned int GSYNC_EXTERN GSY_connect_hole_punching_server(const char* config_file,const char* name,const char* psd,IUICallback callback,PDCallback req_connect_cb);
+    int GSYNC_EXTERN GSY_disconnect_hole_punching_server(unsigned int handler);
+    int GSYNC_EXTERN GSY_is_connected_hole_punching_server(unsigned int handler);
 #if __cplusplus
 }
 #endif

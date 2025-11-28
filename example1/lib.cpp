@@ -17,7 +17,7 @@ SICallback global_callback;
 
 struct EngineWrapper {
     std::shared_ptr<mqas::core::engine_base_interface> engine_base;
-    ICallback event_callback;
+    IUICallback event_callback;
 };
 
 using HolePunchingStream = mqas::core::StreamVariant<
@@ -31,6 +31,7 @@ using AllEngineType = std::tuple<HolePunchingEngine>;
 std::unique_ptr<std::thread> main_thread;
 
 std::unordered_map<uint32_t, EngineWrapper> engines;
+std::mutex engines_mutex;
 
 std::atomic_bool is_running = false;
 std::queue<std::function<void()>> task_queue;
@@ -71,10 +72,11 @@ int GSY_terminate()
     return EC_Ok;
 }
 
-int GSY_connect_hole_punching_server(const char* config_file,const char* name,const char* psd,ICallback callback,PDCallback req_connect_cb)
+unsigned int GSY_connect_hole_punching_server(const char* config_file,const char* name,const char* psd,IUICallback callback,PDCallback req_connect_cb)
 {
+    std::lock_guard<std::mutex> lock(engines_mutex);
     const uint32_t id = engines.size() + 1;
-    if (engines.contains(id))
+    if (id >= EC_ErrorBegin)
         return EC_EngineCountLimitExceeded;
 
     auto task = [
@@ -93,7 +95,7 @@ int GSY_connect_hole_punching_server(const char* config_file,const char* name,co
 
         if(!mqas::io::Ip::str2addr_ipv4(ip.c_str(), port, addr)) {
             if (callback != nullptr)
-                callback(EC_InvalidAddress);
+                callback(EC_InvalidAddress,0);
             return;
         }
 
@@ -102,13 +104,25 @@ int GSY_connect_hole_punching_server(const char* config_file,const char* name,co
         engine->get_engine()->whitelist_port.push_back(mqas::io::Ip::addr_get_port(addr));
 
         auto conn = connect.lock();
-        conn->make_stream([name_str = std::move(name_str),req_connect_cb](std::weak_ptr<HolePunchingStream> stream) {
+
+        conn->on_close_signal.connect([id,callback](mqas::core::IConnect& c) {
+            if (callback != nullptr) {
+                callback(EC_Disconnected,id);
+            }
+            std::lock_guard<std::mutex> lock(engines_mutex);
+            if (engines.contains(id)) {
+                destroy_engine(engines[id].engine_base);
+                engines.erase(id);
+            }
+        });
+
+        conn->make_stream([name_str = name_str,req_connect_cb,callback](const std::weak_ptr<HolePunchingStream>& stream) {
             auto s = stream.lock();
             mqas::tools::proto::p2p::ReqRegistePeer msg;
             if (!name_str.empty())
                 msg.set_name(name_str);
             s->req_change<mqas::tools::p2p::P2PLobbyClientStream, mqas::tools::p2p::ReqRegistePeerPair>(msg);
-            auto lobby_stream = s->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
+            const auto lobby_stream = s->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
 
             lobby_stream->on_want_connect.connect([req_connect_cb](const mqas::tools::proto::p2p::PeerData& peer) {
                 if (req_connect_cb != nullptr) {
@@ -117,9 +131,12 @@ int GSY_connect_hole_punching_server(const char* config_file,const char* name,co
                 }
             });
 
-            lobby_stream->on_get_respond.connect([stream](std::shared_ptr<mqas::tools::proto::p2p::RespondConnectPeer> respond)
+            lobby_stream->on_get_respond.connect([stream,callback](std::shared_ptr<mqas::tools::proto::p2p::RespondConnectPeer> respond)
             {
-
+                if(callback != nullptr) {
+                    const int code = respond->ret() == mqas::tools::proto::p2p::ok ? EC_Ok : static_cast<int>(respond->ret()) + 1000;
+                    callback(code,respond->peer_id());
+                }
             });
 
             lobby_stream->on_change_helper = [stream](const mqas::tools::proto::p2p::ReqRespondPeerReqConnect& msg)
@@ -134,20 +151,35 @@ int GSY_connect_hole_punching_server(const char* config_file,const char* name,co
             };
 
         });
+
         engines.insert({id,EngineWrapper{.engine_base = std::move(engine),.event_callback = callback}});
     };
 
     push_task(task);
 
-    return 0;
+    return id;
 }
 
-int GSY_disconnect_hole_punching_server(int handler)
+int GSY_disconnect_hole_punching_server(unsigned int handler)
 {
+    std::lock_guard<std::mutex> lock(engines_mutex);
+    if (!engines.contains(handler))
+        return EC_InvalidHandler;
+    auto task = [handler]() {
+        std::lock_guard<std::mutex> lock(engines_mutex);
+        if (!engines.contains(handler))
+            return;
+        auto&[engine, event_callback] = engines[handler];
+        if (event_callback != nullptr)
+            event_callback(EC_Disconnected,handler);
+        destroy_engine(engine);
+        engines.erase(handler);
+    };
+    push_task(task);
     return EC_Ok;
 }
 
-int GSY_is_connected_hole_punching_server(int handler)
+int GSY_is_connected_hole_punching_server(unsigned int handler)
 {
     if (engines.contains(handler)) {
         const auto engine = std::dynamic_pointer_cast<HolePunchingEngine>(engines[handler].engine_base);
