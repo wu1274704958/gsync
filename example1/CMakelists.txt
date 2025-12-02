@@ -5,29 +5,10 @@ add_dependencies(gsync_e1 mqas)
 
 target_link_libraries(gsync_e1 PUBLIC mqas)
 
-get_target_property(mqas_LINK_LIBRARIES mqas LINK_LIBRARIES)
-
-foreach(lib ${mqas_LINK_LIBRARIES})
-    if(TARGET ${lib})
-        get_target_property(lib_type ${lib} TYPE)
-        message("${lib} ------------ lib type = ${lib_type}")
-        if(lib_type STREQUAL "SHARED_LIBRARY" OR ${lib} STREQUAL "ZLIB::ZLIB")
-            message("${lib} ------------")
-            add_custom_command(TARGET gsync_e1 POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    $<TARGET_FILE:${lib}> $<TARGET_FILE_DIR:gsync_e1>
-                    COMMENT "Copying $<TARGET_FILE:${lib}> to $<TARGET_FILE_DIR:gsync_e1>"
-            )
-        endif()
-    else()
-        string(REGEX MATCH "${CMAKE_SHARED_LIBRARY_SUFFIX}" MATCH_RESULT "${lib}")
-        if(MATCH_RESULT)
-            message("${lib} ------------")
-            add_custom_command(TARGET gsync_e1 POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    ${lib} $<TARGET_FILE_DIR:gsync_e1>
-                    COMMENT "Copying ${lib} to $<TARGET_FILE_DIR:gsync_e1>"
-            )
-        endif()
-    endif()
-endforeach()
+add_custom_command(TARGET gsync_e1 POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+        -D TARGET_DIR="$<TARGET_FILE_DIR:gsync_e1>"
+        -D FILE_LIST="$<TARGET_FILE_DIR:mqas>/dependencies.ini"
+        -P "${CMAKE_SOURCE_DIR}/cmake/CopyFiles.cmake"
+        COMMENT "Copying mqas dependencies binary files"
+)
