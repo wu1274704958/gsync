@@ -26,4 +26,6 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static mqas" FORCE)
 
 add_subdirectory(mqas)
 
+target_compile_definitions(mqas PUBLIC -DMQAS_SHARE_EASYLOGGINGPP=1)
+
 add_subdirectory(example1)

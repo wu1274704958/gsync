@@ -43,6 +43,21 @@ void push_task(const std::function<void()> &task);
 
 int GSY_initialize(int flag, SICallback error_callback)
 {
+    mqas::log::init("default", R"(
+* GLOBAL:
+   FORMAT               =  "%datetime [%logger] [%level] %msg"
+   FILENAME             =  "log.log"
+   ENABLED              =  true
+   TO_FILE              =  true
+   TO_STANDARD_OUTPUT   =  false
+   SUBSECOND_PRECISION  =  6
+   PERFORMANCE_TRACKING =  true
+)", std::nullopt);
+
+    el::base::Writer writer(el::Level::Debug, "lib.cpp", 2, __FUNCSIG__, el::base::DispatchAction::NormalLog);
+    el::Logger* logger = ELPP->registeredLoggers()->get("default", ELPP->hasFlag(el::LoggingFlag::CreateLoggerAutomatically));
+    logger->verbose(1,"123");
+
     if(is_running)
         return EC_AlreadyInitialized;
     is_running = true;
