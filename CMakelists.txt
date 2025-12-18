@@ -22,10 +22,8 @@ add_compile_definitions(-DBUILDING_GSYNC_SHARED=1)
 include_directories("${CMAKE_SOURCE_DIR}/include")
 
 set(BUILD_MQAS_EXAMPLES OFF CACHE BOOL "Compile mqas examples" FORCE)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static mqas" FORCE)
+set(BUILD_SHARED_LIBS ON CACHE BOOL "Build static mqas" FORCE)
 
 add_subdirectory(mqas)
-
-target_compile_definitions(mqas PUBLIC -DMQAS_SHARE_EASYLOGGINGPP=1)
 
 add_subdirectory(example1)

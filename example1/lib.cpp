@@ -43,20 +43,6 @@ void push_task(const std::function<void()> &task);
 
 int GSY_initialize(int flag, SICallback error_callback)
 {
-    mqas::log::init("default", R"(
-* GLOBAL:
-   FORMAT               =  "%datetime [%logger] [%level] %msg"
-   FILENAME             =  "log.log"
-   ENABLED              =  true
-   TO_FILE              =  true
-   TO_STANDARD_OUTPUT   =  false
-   SUBSECOND_PRECISION  =  6
-   PERFORMANCE_TRACKING =  true
-)", std::nullopt);
-
-    el::base::Writer writer(el::Level::Debug, "lib.cpp", 2, __FUNCSIG__, el::base::DispatchAction::NormalLog);
-    el::Logger* logger = ELPP->registeredLoggers()->get("default", ELPP->hasFlag(el::LoggingFlag::CreateLoggerAutomatically));
-    logger->verbose(1,"123");
 
     if(is_running)
         return EC_AlreadyInitialized;
@@ -248,5 +234,32 @@ void destroy_engine_internal(std::shared_ptr<mqas::core::engine_base_interface> 
 void destroy_engine(std::shared_ptr<mqas::core::engine_base_interface>& engine_base)
 {
     destroy_engine_internal<0,AllEngineType>(engine_base);
+}
+
+int mainxx()
+{
+    mqas::log::init("default", R"(
+ * GLOBAL:
+    FORMAT               =  "%datetime [%logger] [%level] %msg"
+    FILENAME             =  "log.log"
+    ENABLED              =  true
+    TO_FILE              =  true
+    TO_STANDARD_OUTPUT   =  false
+    SUBSECOND_PRECISION  =  6
+    PERFORMANCE_TRACKING =  true
+ )",
+                       std::nullopt);
+
+    //mqas::logger::log(el::Level::Info) << "hello " << mqas::logend;
+
+    std::stringstream stream;
+    stream << "hhh";
+
+    LOG(DEBUG) << "hello";
+	//mqas::logger::log(el::Level::Info) << "hello " << stream.str() << mqas::logend;
+    //mqas::logger::log_category(el::Level::Debug,"world");
+   
+    
+    return 0;
 }
 
