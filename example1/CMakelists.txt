@@ -12,3 +12,9 @@ add_custom_command(TARGET gsync_e1 POST_BUILD
         -P "${CMAKE_SOURCE_DIR}/cmake/CopyFiles.cmake"
         COMMENT "Copying mqas dependencies binary files"
 )
+
+if(GSYNC_BUILD_UNIT_TEST)
+        add_executable(te1 main.cpp)
+        target_link_libraries(te1 PRIVATE gsync_e1)
+        target_compile_definitions(te1 PRIVATE CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/conf.txt")
+endif()

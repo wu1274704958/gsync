@@ -47,8 +47,6 @@ int GSY_initialize(int flag, SICallback error_callback)
     if(is_running)
         return EC_AlreadyInitialized;
     is_running = true;
-    context = std::make_unique<mqas::Context<mqas::core::InitFlags::BOTH>>();
-    io_cxt = std::make_unique<mqas::io::Context>();
     global_callback = error_callback;
     main_thread = std::make_unique<std::thread>(mian_func);
     return EC_Ok;
@@ -202,6 +200,9 @@ void push_task(const std::function<void()> &task) {
 
 void mian_func()
 {
+    context = std::make_unique<mqas::Context<mqas::core::InitFlags::BOTH>>();
+    io_cxt = std::make_unique<mqas::io::Context>();
+    
     while (is_running) {
         if (task_queue_push.load(std::memory_order_acquire) == false){
             task_queue_running.store(true, std::memory_order_release);

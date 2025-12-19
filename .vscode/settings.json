@@ -1,6 +1,7 @@
 {
     "cmake.configureArgs": [
-        "-DCMAKE_TOOLCHAIN_FILE=$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        "-DCMAKE_TOOLCHAIN_FILE=$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "-DGSYNC_BUILD_UNIT_TEST=1"
     ],
     "cmake.generator": "Ninja",
     "cmake.buildDirectory": "${workspaceFolder}/build-${command:cmake.buildType}"
