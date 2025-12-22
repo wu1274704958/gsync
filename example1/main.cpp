@@ -31,7 +31,7 @@ void error_callback(const char* msg,int error) {
     printf("error = %s code = %d\n",msg,error);
 }
 void connect_callback(int code,unsigned int id) {
-    printf("on connect = id = %ud code = %d\n",id,code);
+    printf("on connect = id = %u code = %d\n",id,code);
 }
 void request_connect_callback(struct PeerData* peer) {
     printf("on recv request name = %d:%s",peer->id,peer->name);

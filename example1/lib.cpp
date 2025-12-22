@@ -108,11 +108,13 @@ unsigned int GSY_connect_hole_punching_server(const char* config_file,const char
             if (callback != nullptr) {
                 callback(EC_Disconnected,id);
             }
-            std::lock_guard<std::mutex> lock(engines_mutex);
-            if (engines.contains(id)) {
-                destroy_engine(engines[id].engine_base);
-                engines.erase(id);
-            }
+            push_task([id]() {
+                std::lock_guard<std::mutex> lock(engines_mutex);
+                if (engines.contains(id)) {
+                    destroy_engine(engines[id].engine_base);
+                    engines.erase(id);
+                }
+            });
         });
 
         conn->make_stream([name_str = name_str,req_connect_cb,callback](const std::weak_ptr<HolePunchingStream>& stream) {
@@ -202,6 +204,14 @@ void mian_func()
 {
     context = std::make_unique<mqas::Context<mqas::core::InitFlags::BOTH>>();
     io_cxt = std::make_unique<mqas::io::Context>();
+
+    const auto timer = io_cxt->make_handle<mqas::io::Timer>();
+    timer->start([](mqas::io::Timer* t) {
+        if (!is_running) {
+            t->stop();
+            io_cxt->stop();
+        }
+    },300,300);
     
     while (is_running) {
         if (task_queue_push.load(std::memory_order_acquire) == false){
