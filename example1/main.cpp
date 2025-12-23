@@ -2,12 +2,13 @@
 #include <cstdint>
 #include <cstdio>
 #include "example1.h"
+#include <mqas/log.h>
 
 #ifndef CONFIG_PATH
 #define CONFIG_PATH conf.txt
 #endif
 
-std::atomic<uint32_t> handler = 0;
+std::atomic<uint32_t> handle = 0;
 std::atomic<uint32_t> self_id = 0;
 
 void error_callback(const char* msg,int error);
@@ -17,21 +18,26 @@ void connect_error_callback(int code,unsigned int id);
 void request_connect_callback(struct PeerData*);
 int main()
 {
-    GSY_initialize(0,GSY_Context{.on_error = error_callback});
+    GSY_Context cxt{.on_error = error_callback};
+    GSY_initialize(0,&cxt);
+
+    GSY_BaseConnectionContext context{
+        .on_connect = connect_callback,
+        .on_disconnect = disconnect_callback,
+        .on_error =  connect_error_callback,
+    };
 
     for(;;) {
         auto c = getchar();
         if (c == 'l') {
-            handler = GSY_connect_hole_punching_server(CONFIG_PATH,"aaa","aaa",GSY_HPConnectContext{
-                .on_connect = connect_callback,
-                .on_disconnect = disconnect_callback,
-                .on_error = connect_error_callback,
-                .on_request_connect = nullptr,
-                .on_response_connect = nullptr,
-            });
+            handle = GSY_connect(1,CONFIG_PATH,"127.0.0.1",8084,&context);
         }
-        if (c == 'd' && handler != 0) {
-            GSY_disconnect_hole_punching_server(handler);
+        if (c == 'd' && handle != 0) {
+            GSY_disconnect(handle);
+        }
+        if (c == 'c') {
+            auto res = GSY_is_connected(handle);
+            LOG(INFO) << "hwnd:"<< handle << "is_connected: " << res;
         }
         if (c == 'q') {
             break;
@@ -43,24 +49,24 @@ int main()
 }
 
 void error_callback(const char* msg,int error) {
-    printf("error = %s code = %d\n",msg,error);
+    LOG(WARNING) << "on error,msg:"<< msg << " code:"<<error;
 }
 void connect_callback(int code,unsigned int id) {
     if (code != EC_Ok) {
-        handler = 0;
+        handle = 0;
     }else {
         self_id = id;
     }
-    printf("on connect = id = %u code = %d\n",id,code);
+    LOG(INFO) << "on connected,id:"<< id << " code:"<< code;
 }
 void disconnect_callback(int code,unsigned int id) {
-    handler = 0;
+    handle = 0;
     self_id = 0;
-    printf("on disconnect = id = %u code = %d\n",id,code);
+    LOG(INFO) << "on disconnect,id:"<< id << " code:"<< code;
 }
 
 void connect_error_callback(int code,unsigned int id) {
-    handler = 0;
+    handle = 0;
     self_id = 0;
-    printf("on connect_error = id = %u code = %d\n",id,code);
+    LOG(INFO) << "on connect_error,id:"<< id << " code:"<< code;
 }

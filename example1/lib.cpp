@@ -1,5 +1,6 @@
 #include "example1.h"
 #include <memory>
+#include <utility>
 #include <mqas/io/context.h>
 
 #include "mqas/context.h"
@@ -7,18 +8,16 @@
 #include "mqas/core/engine_driver.h"
 #include "mqas/core/stream.h"
 #include "mqas/core/sub_engine.h"
+#include "mqas/tools/unique_id_generator.h"
 #include "mqas/tools/model/p2p_model.h"
 #include "mqas/tools/stream/p2p_lobby_client.h"
 #include "mqas/tools/stream/p2p_helper_client.h"
 
+constexpr GSY_ConnectionHwnd MAX_CONNECTION_HWND = 100000;
+
 std::unique_ptr<mqas::Context<mqas::core::InitFlags::BOTH>> context;
 std::unique_ptr<mqas::io::Context> io_cxt;
-GSY_Context global_context;
-
-struct EngineWrapper {
-    std::shared_ptr<mqas::core::engine_base_interface> engine_base;
-    GSY_HPConnectContext context;
-};
+GSY_Context* global_context;
 
 using HolePunchingStream = mqas::core::StreamVariant<
     mqas::core::StreamVariantPair<1, mqas::tools::p2p::P2PLobbyClientStream>,
@@ -30,7 +29,8 @@ using AllEngineType = std::tuple<HolePunchingEngine>;
 
 std::unique_ptr<std::thread> main_thread;
 
-std::unordered_map<uint32_t, EngineWrapper> engines;
+std::unordered_map<GSY_EngineId,mqas::core::engine_base_interface *> engine_map;
+std::unordered_map<GSY_ConnectionHwnd,std::weak_ptr<mqas::core::IConnect>> connect_map;
 std::mutex engines_mutex;
 
 std::atomic_bool is_running = false;
@@ -38,21 +38,29 @@ std::queue<std::function<void()>> task_queue;
 std::atomic_bool task_queue_push = false;
 std::atomic_bool task_queue_running = false;
 
+mqas::tools::unique_id_generator<GSY_ConnectionHwnd,true> id_generator;
+
 void mian_func();
 void push_task(const std::function<void()> &task);
+void destroy_engine(mqas::core::engine_base_interface* engine_base);
+bool destroy_engine_if_empty(mqas::core::engine_base_interface* engine_base);
+std::optional<std::pair<GSY_EngineId,mqas::core::engine_base_interface*>> find_engine(const ::lsquic_engine* ec);
+template<SIZE_T I, typename TU>
+requires std::is_base_of_v<mqas::core::engine_base_interface, std::tuple_element_t<I, TU>>
+GSY_ConnectionHwnd connect_internal(GSY_EngineId engine_id,const char* config_file,
+    const char* ip,short port,GSY_BaseConnectionContext* context);
+GSY_ConnectionHwnd get_new_connection_hwnd(const GSY_EngineId engine_id);
+void recycle_connection_hwnd(const GSY_ConnectionHwnd h);
 
-int GSY_initialize(int flag, GSY_Context context)
+int GSY_initialize(int flag,GSY_Context* cxt)
 {
-
     if(is_running)
         return EC_AlreadyInitialized;
     is_running = true;
-    global_context = context;
+    global_context = cxt;
     main_thread = std::make_unique<std::thread>(mian_func);
     return EC_Ok;
 }
-
-void destroy_engine(std::shared_ptr<mqas::core::engine_base_interface>& engine_base);
 
 int GSY_terminate()
 {
@@ -61,150 +69,88 @@ int GSY_terminate()
     is_running = false;
     main_thread->join();
     // destroy all
-    for (auto &[engine_base, event_callback]: engines | std::views::values) {
-        destroy_engine(engine_base);
+    for (const auto &engine: engine_map | std::views::values) {
+        destroy_engine(engine);
     }
-    engines.clear();
+    engine_map.clear();
+    connect_map.clear();
     io_cxt.reset();
     context.reset();
-    global_context = {};
+    global_context = nullptr;
     return EC_Ok;
 }
 
-void push_destroy_engine_task(unsigned int handler) {
-    auto task = [handler]() {
-        std::lock_guard<std::mutex> lock(engines_mutex);
-        if (!engines.contains(handler))
-            return;
-        auto&[engine, _] = engines[handler];
-        destroy_engine(engine);
-        engines.erase(handler);
-    };
-    push_task(task);
-}
-
-unsigned int GSY_connect_hole_punching_server(const char* config_file,const char* name,const char* psd,GSY_HPConnectContext context)
-{
+void destroy_connect(const GSY_ConnectionHwnd hwnd) {
     std::lock_guard<std::mutex> lock(engines_mutex);
-    const uint32_t id = engines.size() + 1;
-    if (id >= EC_ErrorBegin)
-        return EC_EngineCountLimitExceeded;
-
-    auto task = [
-        config_file_path = std::string(config_file),
-        name_str = std::string(name),
-        psd_str = std::string(psd),
-        context,id]() {
-        auto engine =  std::make_shared<HolePunchingEngine>(*io_cxt);
-        engine->init(config_file_path.c_str(),mqas::core::EngineFlags::None);
-        engine->start_recv();
-        engine->process_conns();
-
-        sockaddr addr{};
-        const auto ip = toml::find<std::string>(*engine->get_engine()->get_config(),"client", "ip");
-        const auto port = toml::find<int>(*engine->get_engine()->get_config(), "client", "port");
-
-        if(!mqas::io::Ip::str2addr_ipv4(ip.c_str(), port, addr)) {
-            if (context.on_error)
-                context.on_error(EC_InvalidAddress,id);
-            return;
-        }
-
-        auto connect = engine->get_engine()->connect(addr, N_LSQVER);
-        engine->get_engine()->whitelist_addr.push_back(addr);
-        engine->get_engine()->whitelist_port.push_back(mqas::io::Ip::addr_get_port(addr));
-
-        auto conn = connect.lock();
-
-        conn->on_close_signal.connect([id,context](mqas::core::IConnect& c) {
-            if (context.on_disconnect) {
-                context.on_disconnect(EC_Disconnected,id);
+    if (connect_map.contains(hwnd)) {
+        //close connection
+        const auto connection = connect_map[hwnd];
+        connect_map.erase(hwnd);
+        if (!connection.expired()) {
+            if (const auto conn = connection.lock();conn) {
+                conn->close();
             }
-            push_task([id]() {
-                std::lock_guard<std::mutex> lock(engines_mutex);
-                if (engines.contains(id)) {
-                    destroy_engine(engines[id].engine_base);
-                    engines.erase(id);
-                }
-            });
-        });
-
-        conn->make_stream([name_str = name_str,context,id](const std::weak_ptr<HolePunchingStream>& stream) {
-            auto s = stream.lock();
-            mqas::tools::proto::p2p::ReqRegistePeer msg;
-            if (!name_str.empty())
-                msg.set_name(name_str);
-            s->req_change<mqas::tools::p2p::P2PLobbyClientStream, mqas::tools::p2p::ReqRegistePeerPair>(msg);
-            const auto lobby_stream = s->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
-
-            lobby_stream->on_register_signal.connect([context,id](const std::shared_ptr<mqas::tools::proto::p2p::RespondRegistePeer>& msg) {
-                if (msg->ret() == mqas::tools::proto::p2p::RetCode::ok) {
-                    if (context.on_connect)
-                        context.on_connect(EC_Ok,msg->id());
-                }else {
-                    if (context.on_connect)
-                        context.on_connect(EC_ConnectFailed,0);
-                    push_destroy_engine_task(id);
-                }
-            });
-
-            lobby_stream->on_request_connect_signal.connect([context](const mqas::tools::proto::p2p::PeerData& peer) {
-                if (context.on_request_connect)
-                    context.on_request_connect(peer);
-            });
-
-            lobby_stream->on_connect_response_signal.connect([stream,context](std::shared_ptr<mqas::tools::proto::p2p::RespondConnectPeer> msg)
-            {
-                if (context.on_response_connect)
-                    context.on_response_connect(msg);
-            });
-
-            lobby_stream->on_change_helper = [stream](const mqas::tools::proto::p2p::ReqRespondPeerReqConnect& msg)
-            {
-                const auto ptr = stream.lock();
-                ptr->req_change< mqas::tools::p2p::P2PHelperClientStream, mqas::tools::p2p::ReqRespondPeerReqConnectPair>(msg);
-            };
-            lobby_stream->on_change_helper_by_req = [stream](const mqas::tools::proto::p2p::ReqConnectPeer& msg)
-            {
-                const auto ptr = stream.lock();
-                ptr->req_change< mqas::tools::p2p::P2PHelperClientStream, mqas::tools::p2p::ReqConnectPeerPair>(msg);
-            };
-
-        });
-
-        engines.insert({id,EngineWrapper{.engine_base = std::move(engine),.context = context}});
-    };
-
-    push_task(task);
-
-    return id;
+        }
+    }
+    recycle_connection_hwnd(hwnd);
+    if (const auto engine_id = hwnd / MAX_CONNECTION_HWND; engine_map.contains(engine_id)) {
+        if (destroy_engine_if_empty(engine_map.at(engine_id)))
+            engine_map.erase(engine_id);
+    }
 }
 
-int GSY_disconnect_hole_punching_server(unsigned int handler)
-{
-    std::lock_guard<std::mutex> lock(engines_mutex);
-    if (!engines.contains(handler))
-        return EC_InvalidHandler;
-    auto task = [handler]() {
-        std::lock_guard<std::mutex> lock(engines_mutex);
-        if (!engines.contains(handler))
-            return;
-        auto&[engine, _] = engines[handler];
-        destroy_engine(engine);
-        engines.erase(handler);
+void push_destroy_connect_task(GSY_ConnectionHwnd hwnd) {
+    auto task = [hwnd]() {
+        destroy_connect(hwnd);
     };
     push_task(task);
+}
+
+
+GSY_ConnectionHwnd GSYNC_EXTERN GSY_connect(GSY_EngineId engine_id,const char* config_file,
+        const char* ip,short port,GSY_BaseConnectionContext* cxt) {
+    return connect_internal<0,AllEngineType>(engine_id,config_file,ip,port,cxt);
+}
+
+int GSY_disconnect(GSY_ConnectionHwnd handler)
+{
+    std::lock_guard<std::mutex> lock(engines_mutex);
+    if (!connect_map.contains(handler))
+        return EC_InvalidHandler;
+    push_destroy_connect_task(handler);
     return EC_Ok;
 }
 
 
-
-int GSY_is_connected_hole_punching_server(unsigned int handler)
+int GSY_is_connected(unsigned int handler)
 {
-    if (engines.contains(handler)) {
-        const auto engine = std::dynamic_pointer_cast<HolePunchingEngine>(engines[handler].engine_base);
-        return engine != nullptr && mqas::core::engine_base_interface::is_valid(engine.get()) && engine->get_engine()->connect_count() == 1 ? 1 : 0;
+    if (std::this_thread::get_id() == main_thread->get_id()) {
+        assert(false);//"Unexcepted!!!"
     }
+    engines_mutex.lock();
+    if (connect_map.contains(handler)) {
+        std::atomic_bool completed = false;
+        std::atomic_bool result = false;
+        push_task([&completed,&result,handler]() {
+            std::lock_guard<std::mutex> lock(engines_mutex);
+            if (!connect_map.contains(handler)) {
+                result.store(false,std::memory_order::release);
+            }else {
+                const auto conn = connect_map.at(handler).lock();
+                if (!conn) {
+                    result.store(false,std::memory_order::release);
+                    destroy_connect(handler);
+                }else {
+                    result.store(conn->get_hsk_status() == ::lsquic_hsk_status::LSQ_HSK_OK,std::memory_order::release);
+                }
+            }
+            completed.store(true,std::memory_order::release);
+        });
+        engines_mutex.unlock();
+        while (!completed.load(std::memory_order::acquire)) {}
+        return result.load(std::memory_order::acquire) ? 1 : 0;
+    }
+    engines_mutex.unlock();
     return 0;
 }
 
@@ -217,6 +163,7 @@ void push_task(const std::function<void()> &task) {
         task_queue.push(task);
         task_queue_push.store(false, std::memory_order_release);
     }
+
 }
 
 void mian_func()
@@ -230,7 +177,7 @@ void mian_func()
             t->stop();
             io_cxt->stop();
         }
-    },300,300);
+    },60,60);
     
     while (is_running) {
         if (task_queue_push.load(std::memory_order_acquire) == false){
@@ -247,11 +194,11 @@ void mian_func()
 
 template<SIZE_T I, typename TU>
     requires std::is_base_of_v<mqas::core::engine_base_interface, std::tuple_element_t<I, TU> >
-void destroy_engine_internal(std::shared_ptr<mqas::core::engine_base_interface> &engine_base) {
+void destroy_engine_internal(mqas::core::engine_base_interface* engine_base) {
     using EngineType = std::tuple_element_t<I, TU>;
-    auto engine = std::dynamic_pointer_cast<EngineType>(engine_base);
+    auto* engine = dynamic_cast<EngineType*>(engine_base);
     if (engine != nullptr) {
-        engine.reset();
+        delete engine;
     } else {
         if constexpr (I + 1 >= std::tuple_size_v<TU>) {
             LOG(WARNING) << "Can not destroy engine, reason: not find type " << typeid(TU).name();
@@ -261,35 +208,187 @@ void destroy_engine_internal(std::shared_ptr<mqas::core::engine_base_interface> 
     }
 }
 
-void destroy_engine(std::shared_ptr<mqas::core::engine_base_interface>& engine_base)
+template<SIZE_T I, typename TU>
+    requires std::is_base_of_v<mqas::core::engine_base_interface, std::tuple_element_t<I, TU> >
+bool destroy_engine_if_empty_internal(mqas::core::engine_base_interface* engine_base) {
+    using EngineType = std::tuple_element_t<I, TU>;
+    auto* engine = dynamic_cast<EngineType*>(engine_base);
+    if (engine != nullptr) {
+        if (engine->get_real_engine()->connect_count() <= 0) {
+            delete engine;
+            return true;
+        }
+        return false;
+    } else {
+        if constexpr (I + 1 >= std::tuple_size_v<TU>) {
+            LOG(WARNING) << "Can not destroy engine, reason: not find type " << typeid(TU).name();
+            return false;
+        } else {
+            return destroy_engine_internal<I + 1, TU>(engine_base);
+        }
+    }
+}
+
+template<SIZE_T I, typename TU>
+requires std::is_base_of_v<mqas::core::engine_base_interface, std::tuple_element_t<I, TU>>
+GSY_ConnectionHwnd connect_internal(GSY_EngineId engine_id,const char* config_file,const char* ip,short port,GSY_BaseConnectionContext* context) {
+    if (engine_id - 1 == I) {
+        using EngineType = std::tuple_element_t<I, TU>;
+        const GSY_ConnectionHwnd hwnd = get_new_connection_hwnd(engine_id);
+        if (hwnd == InvalidConnection) {
+            if (global_context->on_error)
+                global_context->on_error("Connection create handle failed",EC_ConnectOverLimit);
+            return InvalidConnection;
+        }
+        std::lock_guard<std::mutex> _lock(engines_mutex);
+        if (!engine_map.contains(engine_id)) {
+            auto task = [
+                config_file_path = std::string(config_file),
+                ip_str = std::string(ip),
+                port,
+                context,hwnd]() {
+                auto engine = new EngineType(*io_cxt);
+                engine->init(config_file_path.c_str(),mqas::core::EngineFlags::None);
+                engine->start_recv();
+                engine->process_conns();
+
+                sockaddr addr{};
+
+                if(!mqas::io::Ip::str2addr_ipv4(ip_str.c_str(), port, addr)) {
+                    destroy_connect(hwnd);
+                    if (context->on_error)
+                        context->on_error(EC_InvalidAddress,hwnd);
+                    return;
+                }
+
+                auto connect = engine->get_engine()->connect(addr, N_LSQVER);
+                engine->get_engine()->whitelist_addr.push_back(addr);
+                engine->get_engine()->whitelist_port.push_back(mqas::io::Ip::addr_get_port(addr));
+                auto conn = connect.lock();
+                if (!conn) {
+                    destroy_connect(hwnd);
+                    if (context->on_error)
+                        context->on_error(EC_ConnectFailed,hwnd);
+                    return;
+                }
+
+                std::lock_guard<std::mutex> _lock(engines_mutex);
+                engine_map.insert({hwnd / MAX_CONNECTION_HWND, engine});
+                connect_map.insert({hwnd, connect});
+
+                conn->set_cxt(context);
+
+                conn->on_close_signal.connect([hwnd,context](mqas::core::IConnect& c) {
+                    destroy_connect(hwnd);
+                    if (context->on_disconnect) {
+                        context->on_disconnect(EC_Disconnected,hwnd);
+                    }
+                });
+                conn->on_hsk_done_signal.connect([hwnd,context](mqas::core::IConnect& c,::lsquic_hsk_status status) {
+                    if (status == ::lsquic_hsk_status::LSQ_HSK_OK) {
+                        if (context->on_connect) {
+                            context->on_connect(EC_Ok,hwnd);
+                        }
+                    }
+                });
+            };
+            push_task(task);
+        }else {
+            EngineType* engine = dynamic_cast<EngineType *>(engine_map[engine_id]);
+            if (engine == nullptr) {
+                recycle_connection_hwnd(hwnd);
+                if (global_context->on_error)
+                    global_context->on_error("The existing engine type do not match",EC_ConnectFailed);
+                return InvalidConnection;
+            }
+            auto task = [engine,hwnd,context,ip_str = std::string(ip),port]() {
+
+                sockaddr addr{};
+                if(!mqas::io::Ip::str2addr_ipv4(ip_str.c_str(), port, addr)) {
+                    destroy_connect(hwnd);
+                    if (context->on_error)
+                        context->on_error(EC_InvalidAddress,hwnd);
+                    return;
+                }
+
+                auto connect = engine->get_engine()->connect(addr, N_LSQVER);
+                engine->get_engine()->whitelist_addr.push_back(addr);
+                engine->get_engine()->whitelist_port.push_back(mqas::io::Ip::addr_get_port(addr));
+                auto conn = connect.lock();
+                if (!conn) {
+                    destroy_connect(hwnd);
+                    if (context->on_error)
+                        context->on_error(EC_ConnectFailed,hwnd);
+                    return;
+                }
+
+                std::lock_guard<std::mutex> _lock(engines_mutex);
+
+                connect_map.insert({hwnd, connect});
+                conn->set_cxt(context);
+
+                conn->on_close_signal.connect([hwnd,context](mqas::core::IConnect& c) {
+                    destroy_connect(hwnd);
+                    if (context->on_disconnect) {
+                        context->on_disconnect(EC_Disconnected,hwnd);
+                    }
+                });
+                conn->on_hsk_done_signal.connect([hwnd,context](mqas::core::IConnect& c,::lsquic_hsk_status status) {
+                    if (status == ::lsquic_hsk_status::LSQ_HSK_OK) {
+                        if (context->on_connect) {
+                            context->on_connect(EC_Ok,hwnd);
+                        }
+                    }
+                });
+            };
+            push_task(task);
+        }
+        return hwnd;
+    }else {
+        if constexpr (I + 1 >= std::tuple_size_v<TU>) {
+            return InvalidConnection;
+        }else {
+            return connect_internal<I + 1,TU>(engine_id,config_file,ip,port,context);
+        }
+    }
+}
+
+void destroy_engine(mqas::core::engine_base_interface* engine_base)
 {
+    if (engine_base == nullptr)
+        return;
     destroy_engine_internal<0,AllEngineType>(engine_base);
 }
 
-int mainxx()
+bool destroy_engine_if_empty(mqas::core::engine_base_interface* engine_base)
 {
-    mqas::log::init("default", R"(
- * GLOBAL:
-    FORMAT               =  "%datetime [%logger] [%level] %msg"
-    FILENAME             =  "log.log"
-    ENABLED              =  true
-    TO_FILE              =  true
-    TO_STANDARD_OUTPUT   =  false
-    SUBSECOND_PRECISION  =  6
-    PERFORMANCE_TRACKING =  true
- )",
-                       std::nullopt);
-
-    //mqas::logger::log(el::Level::Info) << "hello " << mqas::logend;
-
-    std::stringstream stream;
-    stream << "hhh";
-
-    LOG(DEBUG) << "hello";
-	//mqas::logger::log(el::Level::Info) << "hello " << stream.str() << mqas::logend;
-    //mqas::logger::log_category(el::Level::Debug,"world");
-   
-    
-    return 0;
+    if (engine_base == nullptr)
+        return false;
+    return destroy_engine_if_empty_internal<0,AllEngineType>(engine_base);
 }
 
+std::optional<std::pair<GSY_EngineId,mqas::core::engine_base_interface*>> find_engine(const ::lsquic_engine* ec)
+{
+    for (auto &pair: engine_map) {
+        if (pair.second->get_origin() == ec) {
+            return {pair};
+        }
+    }
+    return {};
+}
+
+GSY_ConnectionHwnd get_new_connection_hwnd(const GSY_EngineId engine_id) {
+    const auto id = id_generator.next();
+    if (id >= MAX_CONNECTION_HWND) {
+        LOG(ERROR) << "GSY connection handle is over limit";
+        id_generator.remove(id);
+        return InvalidConnection;
+    }
+    return engine_id * MAX_CONNECTION_HWND + id;
+}
+void recycle_connection_hwnd(const GSY_ConnectionHwnd h) {
+    if (h <= MAX_CONNECTION_HWND)
+        return;
+    const auto id = h % MAX_CONNECTION_HWND;
+    id_generator.remove(id);
+}

@@ -4,9 +4,6 @@
 
 #ifndef GSYNC_EXAMPLE1_H
 #define GSYNC_EXAMPLE1_H
-
-#include <memory>
-
 #include "macro.h"
 
 
@@ -21,7 +18,6 @@ extern "C" {
 
     enum ErrorCode {
         EC_Ok = 0,
-
         EC_ErrorBegin = 1000,
         EC_AlreadyInitialized,
         EC_NotInitialized,
@@ -30,30 +26,37 @@ extern "C" {
         EC_Disconnected,
         EC_InvalidHandler,
         EC_ConnectFailed,
+        EC_ConnectOverLimit,
     };
 
     typedef void(*SICallback)(const char*,int);
     typedef void(*ICallback)(int);
     typedef void(*IUICallback)(int,unsigned int);
 
+    typedef unsigned int GSY_ConnectionHwnd;
+    typedef unsigned int GSY_EngineId;
+
+    inline GSY_ConnectionHwnd InvalidConnection = 0;
+
     struct GSYNC_EXTERN GSY_Context {
         SICallback on_error;
     };
 
-    struct GSYNC_EXTERN GSY_HPConnectContext {
+    struct GSYNC_EXTERN GSY_BaseConnectionContext {
         IUICallback on_connect;
         IUICallback on_disconnect;
         IUICallback on_error;
-        void(*on_request_connect)(const mqas::tools::proto::p2p::PeerData& peer);
-        void(*on_response_connect)(std::shared_ptr<mqas::tools::proto::p2p::RespondConnectPeer> respond);
+        void* extend;
     };
 
-    int GSYNC_EXTERN GSY_initialize(int flag,GSY_Context context);
+    int GSYNC_EXTERN GSY_initialize(int flag,GSY_Context* cxt);
     int GSYNC_EXTERN GSY_terminate();
 
-    unsigned int GSYNC_EXTERN GSY_connect_hole_punching_server(const char* config_file,const char* name,const char* psd,GSY_HPConnectContext context);
-    int GSYNC_EXTERN GSY_disconnect_hole_punching_server(unsigned int handler);
-    int GSYNC_EXTERN GSY_is_connected_hole_punching_server(unsigned int handler);
+    GSY_ConnectionHwnd GSYNC_EXTERN GSY_connect(GSY_EngineId engine_id,const char* config_file,
+        const char* ip,short port,GSY_BaseConnectionContext* cxt);
+    int GSYNC_EXTERN GSY_disconnect(GSY_ConnectionHwnd handler);
+    int GSYNC_EXTERN GSY_is_connected(GSY_ConnectionHwnd handler);
+
 #if __cplusplus
 }
 #endif
