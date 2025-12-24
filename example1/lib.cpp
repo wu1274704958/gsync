@@ -43,6 +43,7 @@ mqas::tools::unique_id_generator<GSY_ConnectionHwnd,true> id_generator;
 void mian_func();
 void push_task(const std::function<void()> &task);
 void destroy_engine(mqas::core::engine_base_interface* engine_base);
+bool destroy_engine_by_conn_hwnd(const GSY_ConnectionHwnd hwnd);
 bool destroy_engine_if_empty(mqas::core::engine_base_interface* engine_base);
 std::optional<std::pair<GSY_EngineId,mqas::core::engine_base_interface*>> find_engine(const ::lsquic_engine* ec);
 template<SIZE_T I, typename TU>
@@ -88,15 +89,13 @@ void destroy_connect(const GSY_ConnectionHwnd hwnd) {
         connect_map.erase(hwnd);
         if (!connection.expired()) {
             if (const auto conn = connection.lock();conn) {
-                conn->close();
+                if (!conn->is_closed()) {
+                    conn->close();
+                }
             }
         }
     }
     recycle_connection_hwnd(hwnd);
-    if (const auto engine_id = hwnd / MAX_CONNECTION_HWND; engine_map.contains(engine_id)) {
-        if (destroy_engine_if_empty(engine_map.at(engine_id)))
-            engine_map.erase(engine_id);
-    }
 }
 
 void push_destroy_connect_task(GSY_ConnectionHwnd hwnd) {
@@ -272,6 +271,12 @@ GSY_ConnectionHwnd connect_internal(GSY_EngineId engine_id,const char* config_fi
                     return;
                 }
 
+                engine->get_engine()->on_connect_closed_signal.connect([engine,hwnd](std::shared_ptr<mqas::core::IConnect>) {
+                    if (engine->get_engine()->connect_count() - 1 <= 0) {
+                        push_task([hwnd]() { destroy_engine_by_conn_hwnd(hwnd); });
+                    }
+                });
+
                 std::lock_guard<std::mutex> _lock(engines_mutex);
                 engine_map.insert({hwnd / MAX_CONNECTION_HWND, engine});
                 connect_map.insert({hwnd, connect});
@@ -358,6 +363,16 @@ void destroy_engine(mqas::core::engine_base_interface* engine_base)
     if (engine_base == nullptr)
         return;
     destroy_engine_internal<0,AllEngineType>(engine_base);
+}
+
+bool destroy_engine_by_conn_hwnd(const GSY_ConnectionHwnd hwnd) {
+    if (const auto engine_id = hwnd / MAX_CONNECTION_HWND; engine_map.contains(engine_id)) {
+        if (destroy_engine_if_empty(engine_map.at(engine_id))) {
+            engine_map.erase(engine_id);
+            return true;
+        }
+    }
+    return false;
 }
 
 bool destroy_engine_if_empty(mqas::core::engine_base_interface* engine_base)
