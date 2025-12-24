@@ -6,12 +6,6 @@
 #define GSYNC_EXAMPLE1_H
 #include "macro.h"
 
-
-namespace mqas::tools::proto::p2p {
-    class PeerData;
-    class RespondConnectPeer;
-}
-
 #if __cplusplus
 extern "C" {
 #endif
@@ -27,6 +21,7 @@ extern "C" {
         EC_InvalidHandler,
         EC_ConnectFailed,
         EC_ConnectOverLimit,
+        EC_EngineNotMatch
     };
 
     typedef void(*SICallback)(const char*,int);

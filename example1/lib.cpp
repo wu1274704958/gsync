@@ -302,8 +302,8 @@ GSY_ConnectionHwnd connect_internal(GSY_EngineId engine_id,const char* config_fi
             EngineType* engine = dynamic_cast<EngineType *>(engine_map[engine_id]);
             if (engine == nullptr) {
                 recycle_connection_hwnd(hwnd);
-                if (global_context->on_error)
-                    global_context->on_error("The existing engine type do not match",EC_ConnectFailed);
+                if (context->on_error)
+                    context->on_error(EC_EngineNotMatch,hwnd);
                 return InvalidConnection;
             }
             auto task = [engine,hwnd,context,ip_str = std::string(ip),port]() {
