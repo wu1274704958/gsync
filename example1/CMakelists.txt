@@ -1,5 +1,5 @@
 
-add_library(gsync_e1 SHARED lib.cpp)
+add_library(gsync_e1 SHARED lib.cpp ${GSY_SOURCE_FILES})
 
 add_dependencies(gsync_e1 mqas)
 

@@ -24,6 +24,12 @@ include_directories("${CMAKE_SOURCE_DIR}/include")
 set(BUILD_MQAS_EXAMPLES OFF CACHE BOOL "Compile mqas examples" FORCE)
 set(MQAS_BUILD_SHARED_LIBS ON CACHE BOOL "Build shared mqas" FORCE)
 
+set(GSY_SOURCE_FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core/engine.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core/connection.cpp"
+)
+
+
 add_subdirectory(mqas)
 
 add_subdirectory(example1)
