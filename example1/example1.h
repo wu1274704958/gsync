@@ -27,6 +27,24 @@ extern "C" {
         const char* name;
     };
 
+    struct GSYNC_EXTERN GSY_sockaddr {
+        char sa_data[40];
+        uint16_t port;
+    };
+
+    struct GSYNC_EXTERN GSY_HelperResult
+    {
+        ErrorCode ret;
+        uint32_t peer_id;
+        int is_server;
+        GSY_sockaddr peer_addr;
+        const char* reason;
+        GSY_sockaddr address;
+        GSY_sockaddr relay_addr;
+        int use_relay;
+        const char* relay_token;
+    };
+
     struct GSYNC_EXTERN GSY_LobbyStreamContext {
         void(*on_registration_success)(ErrorCode,GSY_StreamId,GSY_PeerId);
         void(*on_unregister)(ErrorCode,GSY_StreamId);
@@ -34,6 +52,9 @@ extern "C" {
         void(*on_receive_peer_list)(GSY_PeerData*,/*size of list*/uint32_t,GSY_StreamId);
         void(*on_peer_req_connect)(GSY_PeerData*,GSY_StreamId);
         void(*on_error)(GSY_ConnectionHwnd,GSY_StreamId,ErrorCode,const char*,GSY_RequestId);
+        void(*on_change_to_helper_result)(GSY_StreamId,ErrorCode,GSY_PeerId);
+        void(*on_attempt_connect)(GSY_StreamId,/*ip*/const char*,/*port*/uint16_t,/*times*/uint32_t,/*verify_code*/uint32_t);
+        void(*on_helper_quit_result)(GSY_StreamId,GSY_HelperResult*);
         void* extend;
         uint8_t _check_code;//do not modify
     };

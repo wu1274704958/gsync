@@ -60,7 +60,10 @@ GSY_StreamId GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,cons
                 return sid;
             }
         }else
+        {
             stream = connect->make_stream();
+            stream->set_cxt(context);
+        }
 
         if (stream == nullptr)
         {
@@ -77,7 +80,6 @@ GSY_StreamId GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,cons
             stream->close();
             return INVALID_PID;
         }
-        stream->set_cxt(context);
         const auto stream_id = reinterpret_cast<GSY_StreamId>(stream->get_origin());
 
         stream->on_quit_stream_signal.connect([context, stream_id](std::shared_ptr<mqas::core::IStreamVariant> stream)
@@ -92,13 +94,19 @@ GSY_StreamId GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,cons
         });
 
         auto lobby_stream = stream->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
-        lobby_stream->on_change_helper_by_req = [stream](const mqas::tools::proto::p2p::ReqConnectPeer& msg)
+        auto init_helper_stream = [context](std::shared_ptr<mqas::tools::p2p::P2PHelperClientStream> helper_stream)
+        {
+
+        };
+        lobby_stream->on_change_helper_by_req = [stream, init_helper_stream](const mqas::tools::proto::p2p::ReqConnectPeer& msg)
         {
             stream->req_change< mqas::tools::p2p::P2PHelperClientStream, mqas::tools::p2p::ReqConnectPeerPair>(msg);
+            init_helper_stream(stream->get_holds_stream<mqas::tools::p2p::P2PHelperClientStream>());
         };
-        lobby_stream->on_change_helper = [stream](const mqas::tools::proto::p2p::ReqRespondPeerReqConnect& msg)
+        lobby_stream->on_change_helper = [stream, init_helper_stream](const mqas::tools::proto::p2p::ReqRespondPeerReqConnect& msg)
         {
             stream->req_change< mqas::tools::p2p::P2PHelperClientStream, mqas::tools::p2p::ReqRespondPeerReqConnectPair>(msg);
+            init_helper_stream(stream->get_holds_stream<mqas::tools::p2p::P2PHelperClientStream>());
         };
         lobby_stream->on_register_signal.connect([context,stream_id](const std::shared_ptr<mqas::tools::proto::p2p::RespondRegistePeer>& msg)
         {
