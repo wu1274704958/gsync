@@ -15,16 +15,10 @@
 mqas::tools::unique_id_generator<GSY_ConnectionHwnd,true> id_generator;
 
 std::unordered_map<GSY_ConnectionHwnd,std::weak_ptr<mqas::core::IConnect>> connect_map;
-
-bool destroy_engine_by_conn_hwnd(const GSY_ConnectionHwnd hwnd);
-bool destroy_engine_if_empty(mqas::core::engine_base_interface* engine_base);
-std::optional<std::pair<GSY_EngineId,mqas::core::engine_base_interface*>> find_engine(const ::lsquic_engine* ec);
-GSY_ConnectionHwnd get_new_connection_hwnd(const GSY_EngineId engine_id);
-void recycle_connection_hwnd(const GSY_ConnectionHwnd h);
-
+std::mutex connect_mutex;
 
 void destroy_connect(const GSY_ConnectionHwnd hwnd) {
-    std::lock_guard<std::mutex> lock(engines_mutex);
+    std::lock_guard<std::mutex> lock(connect_mutex);
     if (connect_map.contains(hwnd)) {
         //close connection
         const auto connection = connect_map[hwnd];
@@ -49,7 +43,7 @@ void push_destroy_connect_task(GSY_ConnectionHwnd hwnd) {
 
 int GSY_disconnect(GSY_ConnectionHwnd handler)
 {
-    std::lock_guard<std::mutex> lock(engines_mutex);
+    std::lock_guard<std::mutex> lock(connect_mutex);
     if (!connect_map.contains(handler))
         return EC_InvalidHandler;
     push_destroy_connect_task(handler);
@@ -62,12 +56,12 @@ int GSY_is_connected(unsigned int handler)
     if (std::this_thread::get_id() == main_thread->get_id()) {
         assert(false);//"Unexcepted!!!"
     }
-    engines_mutex.lock();
+    connect_mutex.lock();
     if (connect_map.contains(handler)) {
         std::atomic_bool completed = false;
         std::atomic_bool result = false;
         push_task([&completed,&result,handler]() {
-            std::lock_guard<std::mutex> lock(engines_mutex);
+            std::lock_guard<std::mutex> lock(connect_mutex);
             if (!connect_map.contains(handler)) {
                 result.store(false,std::memory_order::release);
             }else {
@@ -81,15 +75,16 @@ int GSY_is_connected(unsigned int handler)
             }
             completed.store(true,std::memory_order::release);
         });
-        engines_mutex.unlock();
+        connect_mutex.unlock();
         while (!completed.load(std::memory_order::acquire)) {}
         return result.load(std::memory_order::acquire) ? 1 : 0;
     }
-    engines_mutex.unlock();
+    connect_mutex.unlock();
     return 0;
 }
 
 bool destroy_engine_by_conn_hwnd(const GSY_ConnectionHwnd hwnd) {
+    std::lock_guard<std::mutex> lock(engines_mutex);
     if (const auto engine_id = hwnd / MAX_CONNECTION_HWND; engine_map.contains(engine_id)) {
         if (destroy_engine_if_empty(engine_map.at(engine_id))) {
             engine_map.erase(engine_id);
@@ -97,16 +92,6 @@ bool destroy_engine_by_conn_hwnd(const GSY_ConnectionHwnd hwnd) {
         }
     }
     return false;
-}
-
-std::optional<std::pair<GSY_EngineId,mqas::core::engine_base_interface*>> find_engine(const ::lsquic_engine* ec)
-{
-    for (auto &pair: engine_map) {
-        if (pair.second->get_origin() == ec) {
-            return {pair};
-        }
-    }
-    return {};
 }
 
 GSY_ConnectionHwnd get_new_connection_hwnd(const GSY_EngineId engine_id) {

@@ -1,6 +1,7 @@
 #pragma once
 #include <type_traits>
 #include "def.h"
+#include "../common.h"
 #include "core/connection.h"
 #include "mqas/core/engine_driver.h"
 #include "mqas/io/ip.h"
@@ -55,6 +56,7 @@ GSY_ConnectionHwnd connect_internal(GSY_EngineId engine_id,const char* config_fi
                 });
 
                 std::lock_guard<std::mutex> _lock(engines_mutex);
+                std::lock_guard<std::mutex> _lock2(connect_mutex);
                 engine_map.insert({hwnd / MAX_CONNECTION_HWND, engine});
                 connect_map.insert({hwnd, connect});
 
@@ -76,7 +78,7 @@ GSY_ConnectionHwnd connect_internal(GSY_EngineId engine_id,const char* config_fi
             };
             push_task(task);
         }else {
-            EngineType* engine = dynamic_cast<EngineType *>(engine_map[engine_id]);
+            auto engine = dynamic_cast<EngineType*>(engine_map[engine_id]);
             if (engine == nullptr) {
                 recycle_connection_hwnd(hwnd);
                 if (context->on_error)
@@ -104,7 +106,7 @@ GSY_ConnectionHwnd connect_internal(GSY_EngineId engine_id,const char* config_fi
                     return;
                 }
 
-                std::lock_guard<std::mutex> _lock(engines_mutex);
+                std::lock_guard<std::mutex> _lock(connect_mutex);
 
                 connect_map.insert({hwnd, connect});
                 conn->set_cxt(context);

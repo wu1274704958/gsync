@@ -21,12 +21,18 @@ constexpr GSY_ConnectionHwnd MAX_CONNECTION_HWND = 100000;
 extern std::unordered_map<GSY_EngineId,mqas::core::engine_base_interface*> engine_map;
 extern std::unordered_map<GSY_ConnectionHwnd,std::weak_ptr<mqas::core::IConnect>> connect_map;
 extern std::mutex engines_mutex;
-extern std::unique_ptr<std::thread> main_thread;
+extern std::mutex connect_mutex;
 
 extern std::unique_ptr<mqas::Context<mqas::core::InitFlags::BOTH>> context;
 extern std::unique_ptr<mqas::io::Context> io_cxt;
 extern GSY_Context* global_context;
 extern std::atomic_bool is_running;
+
+extern std::unique_ptr<std::thread> main_thread;
+extern std::queue<std::function<void()>> task_queue;
+extern std::atomic_bool task_queue_push;
+extern std::atomic_bool task_queue_running;
+extern uv_async_t async_task_handle;
 
 extern GSY_ConnectionHwnd get_new_connection_hwnd(GSY_EngineId);
 extern void recycle_connection_hwnd(GSY_ConnectionHwnd);
@@ -34,6 +40,9 @@ extern void destroy_connect(GSY_ConnectionHwnd);
 extern bool destroy_engine_by_conn_hwnd(GSY_ConnectionHwnd);
 
 extern void push_task(const std::function<void()>&);
+template<typename R>
+requires std::is_constructible_v<R>
+R push_task_with_result(const std::function<R()> &task);
 
 #include "template/engine.hpp"
 #include "template/connection.hpp"

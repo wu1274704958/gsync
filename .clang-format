@@ -1,0 +1,115 @@
+---
+# 基于 LLVM 风格，但进行自定义
+BasedOnStyle: LLVM
+
+# 语言设置
+Language: Cpp
+Standard: Cpp17
+
+# 缩进相关
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+IndentCaseLabels: false
+IndentPPDirectives: None
+IndentWrappedFunctionNames: false
+NamespaceIndentation: None
+ContinuationIndentWidth: 4
+
+# 花括号风格
+BreakBeforeBraces: Linux
+BraceWrapping:
+  AfterClass: true
+  AfterControlStatement: false
+  AfterEnum: false
+  AfterFunction: true
+  AfterNamespace: true
+  AfterObjCDeclaration: false
+  AfterStruct: true
+  AfterUnion: true
+  BeforeCatch: false
+  BeforeElse: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  BWACS_MultiLin: true
+
+# 换行设置
+ColumnLimit: 120
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false
+AllowShortBlocksOnASingleLine: Empty
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: false
+BinPackArguments: true
+BinPackParameters: true
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+BreakStringLiterals: true
+PenaltyBreakAssignment: 2
+PenaltyBreakBeforeFirstCallParameter: 19
+PenaltyBreakComment: 300
+PenaltyBreakFirstLessLess: 120
+PenaltyBreakString: 1000
+PenaltyExcessCharacter: 1000000
+PenaltyReturnTypeOnItsOwnLine: 60
+
+# 空格设置
+SpacesInAngles: Never
+SpaceAfterCStyleCast: false
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceInEmptyParentheses: false
+SpacesInCStyleCastParentheses: false
+SpacesInContainerLiterals: true
+SpinesInParentheses: false
+SpacesInSquareBrackets: false
+
+# 指针/引用对齐
+PointerAlignment: Left
+DerivePointerAlignment: false
+DerivePointerAlignment: false
+AlignEscapedNewlines: Right
+AlignOperands: true
+AlignAfterOpenBracket: DontAlign
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: true
+
+# 排序和包含文件
+SortIncludes: true
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:           '<[[:alnum:]._]+>'
+    Priority:        3
+  - Regex:           '"[[:alnum:]/_\-]+[.]h"'
+    Priority:        2
+  - Regex:           '.*'
+    Priority:        1
+IncludeIsMainRegex: '([-_](test|unittest))?$'
+
+# 其他
+CompactNamespaces: false
+ExperimentalAutoDetectBinPacking: false
+FixNamespaceComments: true
+IndentExternBlock: AfterExternBlock
+ReflowComments: true
+SeparateDefinitionBlocks: Always
+SortUsingDeclarations: true
+...
+
+JavaScriptQuotes: Single
+IndentCaseBlocks: false
+IndentGotoLabels: true
+NamespaceMacros:
+  - TESTSUITE

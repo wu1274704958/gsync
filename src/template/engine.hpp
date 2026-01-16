@@ -40,6 +40,32 @@ bool destroy_engine_if_empty_internal(mqas::core::engine_base_interface* engine_
     }
 }
 
+template<typename R>
+requires std::is_constructible_v<R>
+R push_task_with_result(const std::function<R()> &task)
+{
+    if (std::this_thread::get_id() == main_thread->get_id())
+    {
+        return task();
+    }
+    else
+    {
+        while (task_queue_running.load(std::memory_order_acquire)) {}
+        task_queue_push.store(true, std::memory_order_release);
+        R result;
+        std::atomic_bool finished = false;
+        task_queue.push([&result,&task,&finished]()
+        {
+            result = task();
+            finished.store(true, std::memory_order_release);
+        });
+        task_queue_push.store(false, std::memory_order_release);
+        uv_async_send(&async_task_handle);
+        while (!finished.load(std::memory_order_acquire)) {}
+        return result;
+    }
+}
+
 extern void destroy_engine(mqas::core::engine_base_interface*);
 extern bool destroy_engine_if_empty(mqas::core::engine_base_interface*);
 
