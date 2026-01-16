@@ -33,7 +33,7 @@ extern "C" {
         void(*on_connect_responds)(ErrorCode,/*other peer*/GSY_PeerId,GSY_StreamId);
         void(*on_receive_peer_list)(GSY_PeerData*,/*size of list*/uint32_t,GSY_StreamId);
         void(*on_peer_req_connect)(GSY_PeerData*,GSY_StreamId);
-        void(*on_error)(GSY_StreamId,ErrorCode,const char*,GSY_RequestId);
+        void(*on_error)(GSY_ConnectionHwnd,GSY_StreamId,ErrorCode,const char*,GSY_RequestId);
         void* extend;
         uint8_t _check_code;//do not modify
     };
@@ -41,11 +41,10 @@ extern "C" {
     GSY_StreamId GSYNC_EXTERN GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,const char* psd,GSY_LobbyStreamContext*);
     ErrorCode GSYNC_EXTERN GSY_UnregisterFromLobby(GSY_ConnectionHwnd handle,GSY_StreamId sid,GSY_RequestId request_id);
     ErrorCode GSYNC_EXTERN GSY_FetchPeerList(GSY_ConnectionHwnd handle,GSY_StreamId stream_id,GSY_RequestId request_id);
+    ErrorCode GSYNC_EXTERN GSY_RequestConnectPeer(GSY_ConnectionHwnd handle,GSY_StreamId sid,GSY_PeerId peer_id,GSY_RequestId request_id);
+    ErrorCode GSYNC_EXTERN GSY_RespondPeerConnectRequest(GSY_ConnectionHwnd handle,GSY_StreamId sid,GSY_PeerId peer_id,bool accept,GSY_RequestId request_id);
 
 #if __cplusplus
 }
 #endif
-
-
-
 #endif

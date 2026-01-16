@@ -7,12 +7,13 @@
 #include "mqas/tools/stream/p2p_helper_client.h"
 #include "../src/common.h"
 
-constexpr size_t P2PLobbyStreamIndex = 1;
-constexpr size_t P2PHelperStreamIndex = 2;
+constexpr uint32_t P2PLobbyStreamIndex = 1;
+constexpr uint32_t P2PHelperStreamIndex = 2;
 
-using HolePunchingStream = mqas::core::StreamVariant<
-    mqas::core::StreamVariantPair<P2PLobbyStreamIndex, mqas::tools::p2p::P2PLobbyClientStream>,
-    mqas::core::StreamVariantPair<P2PHelperStreamIndex, mqas::tools::p2p::P2PHelperClientStream>>;
+using P2PLobbyStreamPair = mqas::core::StreamVariantPair<P2PLobbyStreamIndex, mqas::tools::p2p::P2PLobbyClientStream>;
+using P2PHelperStreamPair = mqas::core::StreamVariantPair<P2PHelperStreamIndex, mqas::tools::p2p::P2PHelperClientStream>;
+
+using HolePunchingStream = mqas::core::StreamVariant<P2PLobbyStreamPair,P2PHelperStreamPair>;
 
 using HolePunchingEngine = mqas::core::sub_engine<mqas::core::engine<mqas::core::Connect<HolePunchingStream>>>;
 
@@ -33,25 +34,38 @@ GSY_StreamId GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,cons
         if (!connect_map.contains(handle) || connect_map.at(handle).expired())
         {
             if (context->on_error)
-                context->on_error(INVALID_SID,EC_InvalidHandler,"Invalid connection handle",NONE_RID);
+                context->on_error(handle,INVALID_SID,EC_InvalidHandler,"Invalid connection handle",NONE_RID);
             return INVALID_PID;
         }
         conn = connect_map.at(handle).lock();
         if (!conn)
         {
             if (context->on_error)
-                context->on_error(INVALID_SID,EC_InvalidHandler,"Connect maybe disconnected",NONE_RID);
+                context->on_error(handle,INVALID_SID,EC_InvalidHandler,"Connect maybe disconnected",NONE_RID);
             return INVALID_PID;
         }
     }
-    return push_task_with_result<GSY_StreamId>([conn,context,name]() -> GSY_StreamId
+    return push_task_with_result<GSY_StreamId>([conn,context,name, handle]() -> GSY_StreamId
     {
-        auto connect = std::static_pointer_cast<mqas::core::Connect<HolePunchingStream>>(conn);
-        auto stream = connect->make_stream();
+        const auto connect = std::static_pointer_cast<mqas::core::Connect<HolePunchingStream>>(conn);
+        std::shared_ptr<HolePunchingStream> stream = nullptr;
+        if (const auto it = connect->enumerate_stream();it != connect->enumerate_stream_end())
+        {
+            stream = it->second;
+            if (stream->get_current_stream_tag() != 0)
+            {
+                const auto sid = reinterpret_cast<GSY_StreamId>(stream->get_origin());
+                if (context->on_error)
+                    context->on_error(handle,sid,EC_WrongStreamState,"Already registered",NONE_RID);
+                return sid;
+            }
+        }else
+            stream = connect->make_stream();
+
         if (stream == nullptr)
         {
             if (context->on_error)
-                context->on_error(INVALID_SID,EC_MakeStreamFailed,"Make stream failed",NONE_RID);
+                context->on_error(handle,INVALID_SID,EC_MakeStreamFailed,"Make stream failed",NONE_RID);
             return INVALID_PID;
         }
         mqas::tools::proto::p2p::ReqRegistePeer msg;
@@ -59,7 +73,7 @@ GSY_StreamId GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,cons
         if(!stream->req_change<mqas::tools::p2p::P2PLobbyClientStream, mqas::tools::p2p::ReqRegistePeerPair>(msg))
         {
             if(context->on_error)
-              context->on_error(INVALID_SID,EC_MakeStreamFailed,"Send request failed",NONE_RID);
+              context->on_error(handle,INVALID_SID,EC_MakeStreamFailed,"Send request failed",NONE_RID);
             stream->close();
             return INVALID_PID;
         }
@@ -127,6 +141,7 @@ GSY_StreamId GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,cons
     });
 }
 
+
 #define CHECK_CONNECT_VALID(handle)                                                                             \
 std::shared_ptr<mqas::core::IConnect> conn = nullptr;                                                           \
 {                                                                                                               \
@@ -145,7 +160,7 @@ requires requires
     requires std::is_base_of_v<mqas::core::IStream, S>;
     requires mqas::core::variability_stream_pair_require<SP>;
 }
-std::shared_ptr<S> check_stream_valid(const std::shared_ptr<mqas::core::IConnect>& conn,GSY_StreamId sid,GSY_RequestId request_id,const std::source_location& location = std::source_location::current())
+std::shared_ptr<S> check_stream_valid(GSY_ConnectionHwnd handle,const std::shared_ptr<mqas::core::IConnect>& conn,GSY_StreamId sid,GSY_RequestId request_id,const std::source_location& location = std::source_location::current())
 {
     const auto connect = std::static_pointer_cast<mqas::core::Connect<S>>(conn);
     const auto stream = connect->get_stream(reinterpret_cast<::lsquic_stream_t*>(sid));
@@ -158,13 +173,13 @@ std::shared_ptr<S> check_stream_valid(const std::shared_ptr<mqas::core::IConnect
     if (!stream)
     {
         if (cxt->on_error)
-            cxt->on_error(sid,EC_InvalidStream,"Not found stream",request_id);
+            cxt->on_error(handle,sid,EC_InvalidStream,"Not found stream",request_id);
         return nullptr;
     }
     if (stream->get_current_stream_tag() != SP::STREAM_TAG)
     {
         if (cxt->on_error)
-            cxt->on_error(sid,EC_WrongStreamState,"Current stream is not on lobby phase",request_id);
+            cxt->on_error(handle,sid,EC_WrongStreamState,"Current stream is not on lobby phase",request_id);
         return nullptr;
     }
     return stream;
@@ -173,12 +188,16 @@ std::shared_ptr<S> check_stream_valid(const std::shared_ptr<mqas::core::IConnect
 ErrorCode GSY_UnregisterFromLobby(GSY_ConnectionHwnd handle, GSY_StreamId sid,GSY_RequestId request_id)
 {
     CHECK_CONNECT_VALID(handle)
-    push_task([conn,request_id, sid]()
+    push_task([conn,request_id, sid, handle]()
     {
-        const auto stream = check_stream_valid<mqas::core::StreamVariantPair<P2PLobbyStreamIndex, mqas::tools::p2p::P2PLobbyClientStream>,
-            HolePunchingStream,GSY_LobbyStreamContext,ContextCheckCode>(conn,sid,request_id);
+        const auto stream = check_stream_valid<P2PLobbyStreamPair,
+            HolePunchingStream,GSY_LobbyStreamContext,ContextCheckCode>(handle,conn,sid,request_id);
         if (stream)
-            stream->req_quit(P2PLobbyStreamIndex);
+        {
+            const mqas::tools::proto::p2p::ReqUnregistePeer msg;
+            const auto s = stream->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
+            s->send_req_quit<mqas::tools::p2p::ReqUnregistePeerPair>(msg);
+        }
     });
 
     return EC_Pending;
@@ -187,10 +206,10 @@ ErrorCode GSY_UnregisterFromLobby(GSY_ConnectionHwnd handle, GSY_StreamId sid,GS
 ErrorCode GSY_FetchPeerList(GSY_ConnectionHwnd handle, GSY_StreamId stream_id, GSY_RequestId request_id)
 {
     CHECK_CONNECT_VALID(handle)
-    push_task([conn,request_id, stream_id]()
+    push_task([conn,request_id, stream_id, handle]()
     {
-        const auto stream = check_stream_valid<mqas::core::StreamVariantPair<P2PLobbyStreamIndex, mqas::tools::p2p::P2PLobbyClientStream>,
-            HolePunchingStream,GSY_LobbyStreamContext,ContextCheckCode>(conn,stream_id,request_id);
+        const auto stream = check_stream_valid<P2PLobbyStreamPair,
+            HolePunchingStream,GSY_LobbyStreamContext,ContextCheckCode>(handle,conn,stream_id,request_id);
         if (stream)
         {
             const auto s = stream->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
@@ -200,6 +219,40 @@ ErrorCode GSY_FetchPeerList(GSY_ConnectionHwnd handle, GSY_StreamId stream_id, G
     return EC_Pending;
 }
 
+
+ErrorCode GSY_RequestConnectPeer(GSY_ConnectionHwnd handle, GSY_StreamId sid, GSY_PeerId peer_id,
+    GSY_RequestId request_id)
+{
+    CHECK_CONNECT_VALID(handle)
+    push_task([conn,request_id, sid, handle, peer_id]()
+    {
+        const auto stream = check_stream_valid<P2PLobbyStreamPair,
+            HolePunchingStream,GSY_LobbyStreamContext,ContextCheckCode>(handle,conn,sid,request_id);
+        if (stream)
+        {
+            const auto s = stream->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
+            s->req_connect(peer_id);
+        }
+    });
+    return EC_Pending;
+}
+
+ErrorCode GSY_RespondPeerConnectRequest(GSY_ConnectionHwnd handle, GSY_StreamId sid, GSY_PeerId peer_id,
+                                               bool accept, GSY_RequestId request_id)
+{
+    CHECK_CONNECT_VALID(handle)
+    push_task([conn,request_id, sid, handle, peer_id,accept]()
+    {
+        const auto stream = check_stream_valid<P2PLobbyStreamPair,
+            HolePunchingStream,GSY_LobbyStreamContext,ContextCheckCode>(handle,conn,sid,request_id);
+        if (stream)
+        {
+            const auto s = stream->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
+            s->req_respond(peer_id, accept);
+        }
+    });
+    return EC_Pending;
+}
 ErrorCode mapping_ret_code(mqas::tools::proto::p2p::RetCode ret_code)
 {
     switch (ret_code)

@@ -17,7 +17,7 @@ void connect_callback(int,unsigned int);
 void disconnect_callback(int code,unsigned int id);
 void connect_error_callback(int code,unsigned int id);
 void request_connect_callback(struct PeerData*);
-void register_to_lobby_error_callback(GSY_StreamId stream_id,ErrorCode code, const char* msg,GSY_RequestId request_id);
+void register_to_lobby_error_callback(GSY_ConnectionHwnd handle,GSY_StreamId stream_id,ErrorCode code, const char* msg,GSY_RequestId request_id);
 void on_receive_peer_list_callback(GSY_PeerData* data,uint32_t size,GSY_StreamId stream_id);
 
 int main()
@@ -56,6 +56,11 @@ int main()
         {
             GSY_FetchPeerList(handle,stream,1001);
         }
+        if (c == 'u' && stream != 0)
+        {
+            GSY_UnregisterFromLobby(handle,stream,1002);
+            stream = 0;
+        }
         if (c == 'q') {
             break;
         }
@@ -88,9 +93,9 @@ void connect_error_callback(int code,unsigned int id) {
     LOG(INFO) << "on connect_error,id:"<< id << " code:"<< code;
 }
 
-void register_to_lobby_error_callback(GSY_StreamId stream_id,ErrorCode code, const char* msg,GSY_RequestId request_id)
+void register_to_lobby_error_callback(GSY_ConnectionHwnd handle,GSY_StreamId stream_id,ErrorCode code, const char* msg,GSY_RequestId request_id)
 {
-    LOG(INFO) << "register to lobby got error:" << msg << ",request by " << request_id;
+    LOG(INFO) << "handle: "<< handle << " register to lobby got error:" << msg << ",request by " << request_id;
 }
 
 void on_receive_peer_list_callback(GSY_PeerData* data, uint32_t size, GSY_StreamId stream_id)
