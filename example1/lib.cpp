@@ -19,11 +19,36 @@ using HolePunchingEngine = mqas::core::sub_engine<mqas::core::engine<mqas::core:
 
 using AllEngineType = std::tuple<HolePunchingEngine>;
 
+std::unordered_map<size_t,std::weak_ptr<mqas::io::UdpSocket>> socket_map;
+std::mutex socket_map_mutex;
+
+
+void push_socket(std::shared_ptr<mqas::io::UdpSocket> sock)
+{
+    if (!sock)
+        return;
+    std::lock_guard<std::mutex> lock(socket_map_mutex);
+    socket_map[reinterpret_cast<size_t>(sock.get())] = sock;
+}
+
+std::shared_ptr<mqas::io::UdpSocket> get_socket(const size_t handle)
+{
+    std::lock_guard<std::mutex> lock(socket_map_mutex);
+    if (!socket_map.contains(handle) || socket_map.at(handle).expired())
+    {
+        if (socket_map.contains(handle))
+            socket_map.erase(handle);
+        return nullptr;
+    }
+    return socket_map.at(handle).lock();
+}
+
 GSY_DEFINE_ENGINE_TYPE(AllEngineType)
 
 constexpr uint8_t ContextCheckCode = 192;
 
 ErrorCode mapping_ret_code(mqas::tools::proto::p2p::RetCode ret_code);
+void init_helper_stream(std::shared_ptr<mqas::tools::p2p::P2PHelperClientStream> helper_stream, GSY_LobbyStreamContext* context, GSY_StreamId stream_id);
 
 GSY_StreamId GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,const char* psd,GSY_LobbyStreamContext* context)
 {
@@ -94,19 +119,19 @@ GSY_StreamId GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,cons
         });
 
         auto lobby_stream = stream->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
-        auto init_helper_stream = [context](std::shared_ptr<mqas::tools::p2p::P2PHelperClientStream> helper_stream)
+        auto init_helper_stream_func = [context,stream_id](std::shared_ptr<mqas::tools::p2p::P2PHelperClientStream> helper_stream)
         {
-
+            init_helper_stream(std::move(helper_stream), context, stream_id);
         };
-        lobby_stream->on_change_helper_by_req = [stream, init_helper_stream](const mqas::tools::proto::p2p::ReqConnectPeer& msg)
+        lobby_stream->on_change_helper_by_req = [stream, init_helper_stream_func](const mqas::tools::proto::p2p::ReqConnectPeer& msg)
         {
             stream->req_change< mqas::tools::p2p::P2PHelperClientStream, mqas::tools::p2p::ReqConnectPeerPair>(msg);
-            init_helper_stream(stream->get_holds_stream<mqas::tools::p2p::P2PHelperClientStream>());
+            init_helper_stream_func(stream->get_holds_stream<mqas::tools::p2p::P2PHelperClientStream>());
         };
-        lobby_stream->on_change_helper = [stream, init_helper_stream](const mqas::tools::proto::p2p::ReqRespondPeerReqConnect& msg)
+        lobby_stream->on_change_helper = [stream, init_helper_stream_func](const mqas::tools::proto::p2p::ReqRespondPeerReqConnect& msg)
         {
             stream->req_change< mqas::tools::p2p::P2PHelperClientStream, mqas::tools::p2p::ReqRespondPeerReqConnectPair>(msg);
-            init_helper_stream(stream->get_holds_stream<mqas::tools::p2p::P2PHelperClientStream>());
+            init_helper_stream_func(stream->get_holds_stream<mqas::tools::p2p::P2PHelperClientStream>());
         };
         lobby_stream->on_register_signal.connect([context,stream_id](const std::shared_ptr<mqas::tools::proto::p2p::RespondRegistePeer>& msg)
         {
@@ -279,4 +304,69 @@ ErrorCode mapping_ret_code(mqas::tools::proto::p2p::RetCode ret_code)
         return EC_Unknown;
     }
     return EC_Unknown;
+}
+
+
+void set_address_data(GSY_sockaddr* addr,const mqas::tools::proto::p2p::Address& address)
+{
+    addr->port = address.port();
+    if (address.ip().size() + 1 > sizeof(addr->ip))
+        std::memset(addr->ip, 0, sizeof(addr->ip));
+    std::strncpy(addr->ip,address.ip().c_str(),address.ip().size());
+    addr->ip[address.ip().size()] = '\0';
+}
+
+void set_result_data(GSY_HelperResult* result,
+    const std::shared_ptr<mqas::tools::proto::p2p::NotifyConnectResult>& msg,
+    std::shared_ptr<mqas::io::UdpSocket> socket)
+{
+    auto sock_handle = socket.get();
+    push_socket(std::move(socket));
+
+    init_sockaddr_data(&result->address);
+    init_sockaddr_data(&result->peer_addr);
+    init_sockaddr_data(&result->relay_addr);
+
+    result->socket_handle = reinterpret_cast<size_t>(sock_handle);
+    result->ret = mapping_ret_code(msg->ret());
+    result->peer_id = msg->peer_id();
+    result->is_server = msg->is_server() ? 1 : 0;
+
+    if (msg->has_peer_addr())
+        set_address_data(&result->peer_addr, msg->peer_addr());
+
+    result->reason = msg->reason().c_str();
+    if (msg->has_address())
+        set_address_data(&result->address, msg->address());
+    if (msg->has_relay_addr())
+        set_address_data(&result->relay_addr, msg->relay_addr());
+
+    result->use_relay = msg->use_relay() ? 1 : 0;
+    result->relay_token = msg->relay_token().c_str();
+}
+
+void init_helper_stream(std::shared_ptr<mqas::tools::p2p::P2PHelperClientStream> helper_stream,
+    GSY_LobbyStreamContext* context, GSY_StreamId stream_id)
+{
+    helper_stream->on_change_result.connect([context, stream_id](const std::shared_ptr<mqas::tools::proto::p2p::RespondConnectPeer>& msg)
+    {
+        if (context->on_change_to_helper_result)
+            context->on_change_to_helper_result(stream_id,mapping_ret_code(msg->ret()), msg->peer_id());
+    });
+    helper_stream->on_connect_peer.connect([context, stream_id](const std::shared_ptr<mqas::tools::proto::p2p::NotifyConnectPeerData>& msg)
+    {
+        if (context->on_attempt_connect)
+            context->on_attempt_connect(stream_id, msg->connect_data().ip().c_str(), static_cast<uint16_t>(msg->connect_data().port()),msg->connect_data().send_times()
+                , msg->connect_data().verify_code());
+    });
+    helper_stream->on_quit_result.connect([context, stream_id](const std::shared_ptr<mqas::tools::proto::p2p::NotifyConnectResult>& msg,std::shared_ptr<mqas::io::UdpSocket> socket)
+    {
+        if(context->on_helper_quit_result)
+        {
+            GSY_HelperResult result = {};
+            set_result_data(&result,msg,std::move(socket));
+            context->on_helper_quit_result(stream_id, &result);
+        }
+    });
+
 }

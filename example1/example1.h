@@ -5,15 +5,15 @@
 #ifndef GSYNC_EXAMPLE1_H
 #define GSYNC_EXAMPLE1_H
 
+#include <cstring>
+
 #include "core/engine.h"
 #include "core/connection.h"
-#include <stdint.h>
 
 #if __cplusplus
 extern "C" {
 #endif
 
-    typedef uint64_t GSY_StreamId;
     typedef uint32_t GSY_PeerId;
     typedef uint32_t GSY_RequestId;
 
@@ -28,9 +28,14 @@ extern "C" {
     };
 
     struct GSYNC_EXTERN GSY_sockaddr {
-        char sa_data[40];
+        char ip[40];
         uint16_t port;
     };
+
+    inline void init_sockaddr_data(GSY_sockaddr* addr)
+    {
+        memset(addr, 0, sizeof(GSY_sockaddr));
+    }
 
     struct GSYNC_EXTERN GSY_HelperResult
     {
@@ -43,6 +48,7 @@ extern "C" {
         GSY_sockaddr relay_addr;
         int use_relay;
         const char* relay_token;
+        size_t socket_handle;
     };
 
     struct GSYNC_EXTERN GSY_LobbyStreamContext {
