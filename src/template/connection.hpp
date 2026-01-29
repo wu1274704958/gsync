@@ -126,16 +126,16 @@ bool handle_new_connection_internal(const GSY_ConnectionHwnd hwnd,ET* engine,con
     });
     if (context->on_stream_open)
     {
-        conn->on_new_stream_signal.connect([context](std::shared_ptr<mqas::core::IStream> stream)
+        conn->on_new_stream_signal.connect([hwnd,context](std::shared_ptr<mqas::core::IStream> stream)
         {
-            context->on_stream_open(reinterpret_cast<GSY_StreamId>(stream->get_origin()),EC_Ok);
+            context->on_stream_open(hwnd,reinterpret_cast<GSY_StreamId>(stream->get_origin()),EC_Ok);
         });
     }
     if (context->on_stream_close)
     {
-        conn->on_stream_close_signal.connect([context](std::shared_ptr<mqas::core::IStream> stream)
+        conn->on_stream_close_signal.connect([hwnd,context](std::shared_ptr<mqas::core::IStream> stream)
         {
-            context->on_stream_close(reinterpret_cast<GSY_StreamId>(stream->get_origin()),EC_Ok);
+            context->on_stream_close(hwnd,reinterpret_cast<GSY_StreamId>(stream->get_origin()),EC_Ok);
         });
     }
     return true;
