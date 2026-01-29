@@ -6,6 +6,13 @@
 #include "mqas/core/engine_driver.h"
 #include "mqas/io/ip.h"
 
+
+
+template<typename ET>
+requires std::is_base_of_v<mqas::core::engine_base_interface, ET>
+bool handle_new_connection_internal(const GSY_ConnectionHwnd hwnd,ET* engine,const std::string& ip,
+    short port,GSY_BaseConnectionContext* context);
+
 template<size_t I, typename TU>
 requires std::is_base_of_v<mqas::core::engine_base_interface, std::tuple_element_t<I, TU>>
 GSY_ConnectionHwnd connect_internal(GSY_EngineId engine_id,const char* config_file,const char* ip,short port,GSY_BaseConnectionContext* context) {
@@ -29,52 +36,12 @@ GSY_ConnectionHwnd connect_internal(GSY_EngineId engine_id,const char* config_fi
                 engine->start_recv();
                 engine->process_conns();
 
-                sockaddr addr{};
-
-                if(!mqas::io::Ip::str2addr_ipv4(ip_str.c_str(), port, addr)) {
-                    destroy_connect(hwnd);
-                    if (context->on_error)
-                        context->on_error(EC_InvalidAddress,hwnd);
+                if (!handle_new_connection_internal(hwnd,engine,ip_str,port,context))
+                {
+                    delete engine;
                     return;
                 }
-
-                auto connect = engine->get_engine()->connect(addr, N_LSQVER);
-                engine->get_engine()->whitelist_addr.push_back(addr);
-                engine->get_engine()->whitelist_port.push_back(mqas::io::Ip::addr_get_port(addr));
-                auto conn = connect.lock();
-                if (!conn) {
-                    destroy_connect(hwnd);
-                    if (context->on_error)
-                        context->on_error(EC_ConnectFailed,hwnd);
-                    return;
-                }
-
-                engine->get_engine()->on_connect_closed_signal.connect([engine,hwnd](std::shared_ptr<mqas::core::IConnect>) {
-                    if (engine->get_engine()->connect_count() - 1 <= 0) {
-                        push_task([hwnd]() { destroy_engine_by_conn_hwnd(hwnd); });
-                    }
-                });
-
-                std::lock_guard<std::mutex> _lock(engines_mutex);
-                std::lock_guard<std::mutex> _lock2(connect_mutex);
                 engine_map.insert({hwnd / MAX_CONNECTION_HWND, engine});
-                connect_map.insert({hwnd, connect});
-
-                conn->set_cxt(context);
-
-                conn->on_close_signal.connect([hwnd,context](mqas::core::IConnect& c) {
-                    destroy_connect(hwnd);
-                    if (context->on_disconnect) {
-                        context->on_disconnect(EC_Disconnected,hwnd);
-                    }
-                });
-                conn->on_hsk_done_signal.connect([hwnd,context](mqas::core::IConnect& c,::lsquic_hsk_status status) {
-                    if (status == ::lsquic_hsk_status::LSQ_HSK_OK) {
-                        if (context->on_connect) {
-                            context->on_connect(EC_Ok,hwnd);
-                        }
-                    }
-                });
             };
             push_task(task);
         }else {
@@ -86,44 +53,7 @@ GSY_ConnectionHwnd connect_internal(GSY_EngineId engine_id,const char* config_fi
                 return InvalidConnection;
             }
             auto task = [engine,hwnd,context,ip_str = std::string(ip),port]() {
-
-                sockaddr addr{};
-                if(!mqas::io::Ip::str2addr_ipv4(ip_str.c_str(), port, addr)) {
-                    destroy_connect(hwnd);
-                    if (context->on_error)
-                        context->on_error(EC_InvalidAddress,hwnd);
-                    return;
-                }
-
-                auto connect = engine->get_engine()->connect(addr, N_LSQVER);
-                engine->get_engine()->whitelist_addr.push_back(addr);
-                engine->get_engine()->whitelist_port.push_back(mqas::io::Ip::addr_get_port(addr));
-                auto conn = connect.lock();
-                if (!conn) {
-                    destroy_connect(hwnd);
-                    if (context->on_error)
-                        context->on_error(EC_ConnectFailed,hwnd);
-                    return;
-                }
-
-                std::lock_guard<std::mutex> _lock(connect_mutex);
-
-                connect_map.insert({hwnd, connect});
-                conn->set_cxt(context);
-
-                conn->on_close_signal.connect([hwnd,context](mqas::core::IConnect& c) {
-                    destroy_connect(hwnd);
-                    if (context->on_disconnect) {
-                        context->on_disconnect(EC_Disconnected,hwnd);
-                    }
-                });
-                conn->on_hsk_done_signal.connect([hwnd,context](mqas::core::IConnect& c,::lsquic_hsk_status status) {
-                    if (status == ::lsquic_hsk_status::LSQ_HSK_OK) {
-                        if (context->on_connect) {
-                            context->on_connect(EC_Ok,hwnd);
-                        }
-                    }
-                });
+                handle_new_connection_internal(hwnd,engine,ip_str,port,context);
             };
             push_task(task);
         }
@@ -135,6 +65,80 @@ GSY_ConnectionHwnd connect_internal(GSY_EngineId engine_id,const char* config_fi
             return connect_internal<I + 1,TU>(engine_id,config_file,ip,port,context);
         }
     }
+}
+
+template<typename ET>
+requires std::is_base_of_v<mqas::core::engine_base_interface, ET>
+bool handle_new_connection_internal(const GSY_ConnectionHwnd hwnd,ET* engine,const std::string& ip,
+    short port,GSY_BaseConnectionContext* context)
+{
+    sockaddr addr{};
+    if(!mqas::io::Ip::str2addr_ipv4(ip.c_str(), port, addr))
+    {
+        if (context->on_error)
+            context->on_error(EC_InvalidAddress,hwnd);
+        return false;
+    }
+
+    auto connect = engine->get_engine()->connect(addr, N_LSQVER);
+    engine->get_engine()->whitelist_addr.push_back(addr);
+    engine->get_engine()->whitelist_port.push_back(mqas::io::Ip::addr_get_port(addr));
+    auto conn = connect.lock();
+    if (!conn)
+    {
+        if (context->on_error)
+            context->on_error(EC_ConnectFailed,hwnd);
+        return false;
+    }
+
+    engine->get_engine()->on_connect_closed_signal.connect([engine,hwnd](std::shared_ptr<mqas::core::IConnect>)
+    {
+        if (engine->get_engine()->connect_count() - 1 <= 0)
+        {
+            push_task([hwnd]() { destroy_engine_by_conn_hwnd(hwnd); });
+        }
+    });
+
+    {
+        std::lock_guard<std::mutex> _lock(connect_mutex);
+        connect_map.insert({hwnd, connect});
+    }
+
+    conn->set_cxt(context);
+
+    conn->on_close_signal.connect([hwnd,context](mqas::core::IConnect& c)
+    {
+        destroy_connect(hwnd);
+        if (context->on_disconnect)
+        {
+            context->on_disconnect(EC_Disconnected,hwnd);
+        }
+    });
+    conn->on_hsk_done_signal.connect([hwnd,context](mqas::core::IConnect& c,::lsquic_hsk_status status)
+    {
+        if (status == ::lsquic_hsk_status::LSQ_HSK_OK)
+        {
+            if (context->on_connect)
+            {
+                context->on_connect(EC_Ok,hwnd);
+            }
+        }
+    });
+    if (context->on_stream_open)
+    {
+        conn->on_new_stream_signal.connect([context](std::shared_ptr<mqas::core::IStream> stream)
+        {
+            context->on_stream_open(reinterpret_cast<GSY_StreamId>(stream->get_origin()),EC_Ok);
+        });
+    }
+    if (context->on_stream_close)
+    {
+        conn->on_stream_close_signal.connect([context](std::shared_ptr<mqas::core::IStream> stream)
+        {
+            context->on_stream_close(reinterpret_cast<GSY_StreamId>(stream->get_origin()),EC_Ok);
+        });
+    }
+    return true;
 }
 
 

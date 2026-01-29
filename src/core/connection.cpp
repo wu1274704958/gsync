@@ -109,3 +109,4 @@ void recycle_connection_hwnd(const GSY_ConnectionHwnd h) {
     const auto id = h % MAX_CONNECTION_HWND;
     id_generator.remove(id);
 }
+

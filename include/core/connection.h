@@ -18,6 +18,8 @@ extern "C" {
         IUICallback on_connect;
         IUICallback on_disconnect;
         IUICallback on_error;
+        void(*on_stream_open)(GSY_StreamId,ErrorCode);
+        void(*on_stream_close)(GSY_StreamId,ErrorCode);
         void* extend;
     };
 

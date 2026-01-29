@@ -5,6 +5,8 @@
 #ifndef GSYNC_DEF_H
 #define GSYNC_DEF_H
 
+#include <stdint.h>
+
 #if __cplusplus
 extern "C" {
 #endif
@@ -40,6 +42,8 @@ extern "C" {
 
     typedef unsigned int GSY_ConnectionHwnd;
     typedef unsigned int GSY_EngineId;
+
+    typedef uint64_t GSY_StreamId;
 
 
 #if __cplusplus
