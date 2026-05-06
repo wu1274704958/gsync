@@ -6,6 +6,7 @@
 #include "mqas/tools/stream/p2p_lobby_client.h"
 #include "mqas/tools/stream/p2p_helper_client.h"
 #include "../src/common.h"
+#include <source_location>
 
 constexpr uint32_t P2PLobbyStreamIndex = 1;
 constexpr uint32_t P2PHelperStreamIndex = 2;

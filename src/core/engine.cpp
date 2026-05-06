@@ -9,6 +9,7 @@
 #include "mqas/core/stream.h"
 #include "mqas/tools/model/p2p_model.h"
 #include "../common.h"
+#include <ranges>
 
 
 std::unique_ptr<mqas::Context<mqas::core::InitFlags::BOTH>> context;
