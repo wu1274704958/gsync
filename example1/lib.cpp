@@ -137,7 +137,7 @@ GSY_StreamId GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,cons
         lobby_stream->on_register_signal.connect([context,stream_id](const std::shared_ptr<mqas::tools::proto::p2p::RespondRegistePeer>& msg)
         {
             if (context->on_registration_success)
-                context->on_registration_success(mapping_ret_code(msg->ret()), msg->id(),stream_id);
+                context->on_registration_success(mapping_ret_code(msg->ret()), stream_id, msg->id());
         });
         lobby_stream->on_request_connect_signal.connect([context, stream_id](const mqas::tools::proto::p2p::PeerData& peer)
         {

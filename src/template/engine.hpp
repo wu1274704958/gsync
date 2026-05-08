@@ -1,5 +1,6 @@
 #pragma once
 #include <type_traits>
+#include <future>
 #include "easylogging++.h"
 #include "mqas/core/engine_driver.h"
 
@@ -52,7 +53,7 @@ R push_task_with_result(const std::function<R()> &task)
     {
         while (task_queue_running.load(std::memory_order_acquire)) {}
         task_queue_push.store(true, std::memory_order_release);
-        R result;
+        volatile R result;
         std::atomic_bool finished = false;
         task_queue.push([&result,&task,&finished]()
         {

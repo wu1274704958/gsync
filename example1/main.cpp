@@ -20,6 +20,8 @@ void request_connect_callback(struct PeerData*);
 void register_to_lobby_error_callback(GSY_ConnectionHwnd handle,GSY_StreamId stream_id,ErrorCode code, const char* msg,GSY_RequestId request_id);
 void on_receive_peer_list_callback(GSY_PeerData* data,uint32_t size,GSY_StreamId stream_id);
 
+void on_registration_success_callback(ErrorCode error_code, GSY_StreamId stream_id, GSY_PeerId peer_id);
+
 int main()
 {
     GSY_Context cxt{.on_error = error_callback};
@@ -32,6 +34,7 @@ int main()
     };
 
     GSY_LobbyStreamContext stream_context{
+        .on_registration_success = on_registration_success_callback,
         .on_receive_peer_list = on_receive_peer_list_callback,
         .on_error = register_to_lobby_error_callback,
     };
@@ -50,7 +53,8 @@ int main()
         }
         if (c == 'm' && handle != 0)
         {
-             stream = GSY_RegisterToLobby(handle,"aaa","",&stream_context);
+            stream = GSY_RegisterToLobby(handle,"aaa","",&stream_context);
+            printf("register to lobby, stream id:%llu\n", stream.load(std::memory_order_relaxed));
         }
         if (c == 'p' && stream != 0)
         {
@@ -105,4 +109,9 @@ void on_receive_peer_list_callback(GSY_PeerData* data, uint32_t size, GSY_Stream
     {
         LOG(INFO) << "peer " << i << " id:" << data[i].peer_id << " name:" << data[i].name;
     }
+}
+
+void on_registration_success_callback(ErrorCode error_code, GSY_StreamId stream_id, GSY_PeerId peer_id)
+{
+    printf("on registration success, code:%d, stream_id:%llu, peer_id:%u\n", error_code, stream_id, peer_id);
 }
