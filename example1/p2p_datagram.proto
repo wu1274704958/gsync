@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package gsync;
+
+message ReqConnectDatagram {
+    string name = 1;
+}
+
+message RespondConnectDatagram {
+    string name = 1;
+}

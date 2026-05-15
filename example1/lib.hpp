@@ -4,12 +4,15 @@
 #include "mqas/core/sub_engine.h"
 #include "mqas/tools/stream/p2p_helper_client.h"
 #include "mqas/tools/stream/p2p_lobby_client.h"
+#include "p2p_datagram_stream.hpp"
 
 constexpr uint32_t P2PLobbyStreamIndex = 1;
 constexpr uint32_t P2PHelperStreamIndex = 2;
+constexpr uint32_t P2PDatagramStreamIndex = 3;
 
 using P2PLobbyStreamPair = mqas::core::StreamVariantPair<P2PLobbyStreamIndex, mqas::tools::p2p::P2PLobbyClientStream>;
 using P2PHelperStreamPair = mqas::core::StreamVariantPair<P2PHelperStreamIndex, mqas::tools::p2p::P2PHelperClientStream>;
+using P2PDatagramStreamPair = mqas::core::StreamVariantPair<P2PDatagramStreamIndex, P2PDatagramStream>;
 
 using HolePunchingStream = mqas::core::StreamVariant<P2PLobbyStreamPair,P2PHelperStreamPair>;
 

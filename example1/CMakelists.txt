@@ -1,5 +1,22 @@
 
-add_library(gsync_e1 SHARED lib.cpp lobby.cpp ${GSY_SOURCE_FILES})
+add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.pb.cc ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.pb.h
+        COMMAND $<TARGET_FILE:protobuf::protoc> --cpp_out=. p2p_datagram.proto
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.proto protobuf::protoc
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Generating p2p_datagram proto"
+)
+add_custom_target(gsync_e1_proto DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.pb.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.pb.h)
+
+add_library(gsync_e1 SHARED
+        lib.cpp lobby.cpp
+        p2p_datagram_stream.cpp
+        p2p_datagram.pb.cc
+        ${GSY_SOURCE_FILES})
+
+add_dependencies(gsync_e1 gsync_e1_proto)
 
 add_dependencies(gsync_e1 mqas)
 
