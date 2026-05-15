@@ -48,7 +48,14 @@ GSY_StreamId GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,cons
             }
         }else
         {
-            stream = connect->make_stream();
+            std::atomic_bool stream_ready = false;
+            sigc::connection signal_connection = connect->make_stream( [&stream,&stream_ready](std::shared_ptr<HolePunchingStream> s)
+            {
+                stream = std::move(s);
+                stream_ready.store(true, std::memory_order_release);
+            });
+            while (!stream_ready.load(std::memory_order_acquire)){}
+            signal_connection.disconnect();
             stream->set_cxt(context);
         }
 
