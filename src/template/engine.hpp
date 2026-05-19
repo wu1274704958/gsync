@@ -36,7 +36,8 @@ bool destroy_engine_if_empty_internal(mqas::core::engine_base_interface* engine_
             LOG(WARNING) << "Can not destroy engine, reason: not find type " << typeid(TU).name();
             return false;
         } else {
-            return destroy_engine_internal<I + 1, TU>(engine_base);
+            destroy_engine_internal<I + 1, TU>(engine_base);
+            return true;
         }
     }
 }

@@ -10,15 +10,19 @@ constexpr uint32_t P2PLobbyStreamIndex = 1;
 constexpr uint32_t P2PHelperStreamIndex = 2;
 constexpr uint32_t P2PDatagramStreamIndex = 3;
 
+//lobby
 using P2PLobbyStreamPair = mqas::core::StreamVariantPair<P2PLobbyStreamIndex, mqas::tools::p2p::P2PLobbyClientStream>;
 using P2PHelperStreamPair = mqas::core::StreamVariantPair<P2PHelperStreamIndex, mqas::tools::p2p::P2PHelperClientStream>;
+//direct datagram
 using P2PDatagramStreamPair = mqas::core::StreamVariantPair<P2PDatagramStreamIndex, P2PDatagramStream>;
-
+//hole punching
 using HolePunchingStream = mqas::core::StreamVariant<P2PLobbyStreamPair,P2PHelperStreamPair>;
-
+//direct datagram
+using P2PDatagramEngine = mqas::core::sub_engine<mqas::core::engine<mqas::core::Connect<mqas::core::StreamVariant<P2PDatagramStreamPair>>>>;
+//hole punching
 using HolePunchingEngine = mqas::core::sub_engine<mqas::core::engine<mqas::core::Connect<HolePunchingStream>>>;
 
-using AllEngineType = std::tuple<HolePunchingEngine>;
+using AllEngineType = std::tuple<HolePunchingEngine,P2PDatagramEngine>;
 
 template<typename SP,typename S,typename C,uint8_t CC>
 requires requires

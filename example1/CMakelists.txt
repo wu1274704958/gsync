@@ -13,6 +13,7 @@ add_custom_target(gsync_e1_proto DEPENDS
 add_library(gsync_e1 SHARED
         lib.cpp lobby.cpp
         p2p_datagram_stream.cpp
+        p2p_connection_datagram.cpp
         p2p_datagram.pb.cc
         ${GSY_SOURCE_FILES})
 
