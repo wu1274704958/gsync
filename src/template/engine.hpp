@@ -44,9 +44,9 @@ bool destroy_engine_if_empty_internal(mqas::core::engine_base_interface* engine_
 
 template<typename R>
 requires std::is_constructible_v<R>
-R push_task_with_result(const std::function<R()> &task)
+R push_task_with_result(const std::function<R()> &task,bool force_delay)
 {
-    if (std::this_thread::get_id() == main_thread->get_id())
+    if (!force_delay && std::this_thread::get_id() == main_thread->get_id())
     {
         return task();
     }

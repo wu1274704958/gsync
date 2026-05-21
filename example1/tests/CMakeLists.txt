@@ -1,0 +1,2 @@
+add_subdirectory(test_launch_server)
+add_subdirectory(test_connect_server)

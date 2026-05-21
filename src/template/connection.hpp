@@ -5,6 +5,7 @@
 #include "core/connection.h"
 #include "mqas/core/engine_driver.h"
 #include "mqas/io/ip.h"
+#include "mqas/core/connect.h"
 
 
 
@@ -95,7 +96,7 @@ bool handle_new_connection_internal(const GSY_ConnectionHwnd hwnd,ET* engine,con
     {
         if (engine->get_engine()->connect_count() - 1 <= 0)
         {
-            push_task([hwnd]() { destroy_engine_by_conn_hwnd(hwnd); });
+            push_task([hwnd]() { destroy_engine_by_conn_hwnd(hwnd); },true);
         }
     });
 

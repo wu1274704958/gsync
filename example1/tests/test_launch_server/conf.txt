@@ -1,0 +1,22 @@
+[engine_config]
+bind_ip="0.0.0.0"
+port=8101
+log_level="info"
+log_config="""
+* GLOBAL:
+   FORMAT               =  "%datetime [%logger] [%level] %msg"
+   FILENAME             =  "log.log"
+   ENABLED              =  true
+   TO_FILE              =  true
+   TO_STANDARD_OUTPUT   =  false
+   SUBSECOND_PRECISION  =  6
+   PERFORMANCE_TRACKING =  true
+"""
+alpn="echo"
+ssl_cert_path="../../../mqas/certificate/cert-def.pem"
+ssl_key_path="../../../mqas/certificate/key-def.pem"
+[p2p]
+name="S"
+ignore_verify_token=true
+[lsquic_settings]
+es_datagrams=1

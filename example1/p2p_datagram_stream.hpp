@@ -9,7 +9,7 @@
 class P2PDatagramStream : public mqas::tools::p2p_direct::P2PDirectStream<P2PDatagramStream>
 {
 public:
-    sigc::signal<void(const std::span<uint8_t>&)> on_datagram_received_signal;
+    sigc::signal<void(const std::span<uint8_t>&,uint32_t)> on_datagram_received_signal;
     bool send_datagram(const std::span<uint8_t>& data);
     bool send_datagram(uint8_t* data, size_t size);
 protected:

@@ -22,11 +22,14 @@ std::unordered_map<GSY_EngineId,mqas::core::engine_base_interface *> engine_map;
 std::mutex engines_mutex;
 
 std::atomic_bool is_running = false;
+std::atomic_bool is_context_initialized = false;
 std::queue<std::function<void()>> task_queue;
 std::atomic_bool task_queue_push = false;
 std::atomic_bool task_queue_running = false;
 uv_async_t async_task_handle;
 
+
+void waiting_for_context_initialized();
 void mian_func();
 
 int GSY_initialize(int flag,GSY_Context* cxt)
@@ -36,6 +39,7 @@ int GSY_initialize(int flag,GSY_Context* cxt)
     is_running = true;
     global_context = cxt;
     main_thread = std::make_unique<std::thread>(mian_func);
+    waiting_for_context_initialized();
     return EC_Ok;
 }
 
@@ -58,8 +62,8 @@ int GSY_terminate()
     return EC_Ok;
 }
 
-void push_task(const std::function<void()> &task) {
-    if (std::this_thread::get_id() == main_thread->get_id()) {
+void push_task(const std::function<void()> &task,bool force_delay) {
+    if (!force_delay && std::this_thread::get_id() == main_thread->get_id()) {
         task();
     }else {
         while (task_queue_running.load(std::memory_order_acquire)) {}
@@ -82,12 +86,19 @@ void task_execute_callback(uv_async_t* handle)
     }
 }
 
+void waiting_for_context_initialized()
+{
+    while (!is_context_initialized.load(std::memory_order_acquire)) {}
+}
+
 void mian_func()
 {
     context = std::make_unique<mqas::Context<mqas::core::InitFlags::BOTH>>();
     io_cxt = std::make_unique<mqas::io::Context>();
 
     uv_async_init(io_cxt->get_loop().get(),&async_task_handle,task_execute_callback);
+
+    is_context_initialized.store(true, std::memory_order_release);
 
     // const auto timer = io_cxt->make_handle<mqas::io::Timer>();
     // timer->start([](mqas::io::Timer* t) {

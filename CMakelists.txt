@@ -27,6 +27,7 @@ set(MQAS_BUILD_SHARED_LIBS ON CACHE BOOL "Build shared mqas" FORCE)
 set(GSY_SOURCE_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/src/core/engine.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/core/connection.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core/server.cpp"
 )
 
 

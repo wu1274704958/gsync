@@ -8,7 +8,7 @@
       "buildRoot": "${projectDir}\\out\\build\\${name}",
       "installRoot": "${projectDir}\\out\\install\\${name}",
       "ctestCommandArgs": "",
-      "cmakeCommandArgs": "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+      "cmakeCommandArgs": "-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DGSYNC_BUILD_UNIT_TEST=ON"
     }
   ]
 }

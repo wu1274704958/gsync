@@ -1,4 +1,3 @@
-
 add_custom_command(
         OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.pb.cc ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.pb.h
         COMMAND $<TARGET_FILE:protobuf::protoc> --cpp_out=. p2p_datagram.proto
@@ -35,4 +34,6 @@ if(GSYNC_BUILD_UNIT_TEST)
         add_executable(te1 main.cpp)
         target_link_libraries(te1 PRIVATE gsync_e1)
         target_compile_definitions(te1 PRIVATE CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/conf.txt")
+
+        add_subdirectory(tests)
 endif()

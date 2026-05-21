@@ -36,7 +36,7 @@ void P2PDatagramStream::listen_datagram_received()
 void P2PDatagramStream::on_datagram_received(const uint8_t* data, size_t size)
 {
     const std::span<uint8_t> data_span(const_cast<uint8_t*>(data), size);
-    on_datagram_received_signal.emit(data_span);
+    on_datagram_received_signal.emit(data_span,_peer_id);
 }
 
 // ---- send API ----
@@ -45,7 +45,9 @@ bool P2PDatagramStream::send_datagram(const std::span<uint8_t>& data)
     const auto c = connect.lock();
     if (!c)
         return false;
-    return c->write_datagram(data);
+    const auto write_success = c->write_datagram(data);
+    const auto flush_success =  c->flush_datagram();
+    return write_success && flush_success;
 }
 
 bool P2PDatagramStream::send_datagram(uint8_t* data, size_t size)
