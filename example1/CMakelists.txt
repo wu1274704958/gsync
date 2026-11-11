@@ -10,7 +10,7 @@ add_custom_target(gsync_e1_proto DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.pb.h)
 
 add_library(gsync_e1 SHARED
-        lib.cpp lobby.cpp
+        lib.cpp lobby.cpp p2p_session_registry.cpp p2p_peer.cpp p2p_session.cpp
         p2p_datagram_stream.cpp
         p2p_connection_datagram.cpp
         p2p_datagram.pb.cc

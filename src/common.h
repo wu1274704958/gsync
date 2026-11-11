@@ -32,14 +32,18 @@ extern std::atomic_bool is_running;
 
 extern std::unique_ptr<std::thread> main_thread;
 extern std::queue<std::function<void()>> task_queue;
-extern std::atomic_bool task_queue_push;
-extern std::atomic_bool task_queue_running;
+extern std::mutex task_queue_mutex;
 extern uv_async_t async_task_handle;
 
 extern GSY_ConnectionHwnd get_new_connection_hwnd(GSY_EngineId);
 extern void recycle_connection_hwnd(GSY_ConnectionHwnd);
 extern void destroy_connect(GSY_ConnectionHwnd);
 extern bool destroy_engine_by_conn_hwnd(GSY_ConnectionHwnd);
+void p2p_session_remove_stream(GSY_ConnectionHwnd, GSY_StreamId);
+void p2p_session_remove_connection(GSY_ConnectionHwnd);
+void p2p_session_shutdown();
+void p2p_peers_shutdown();
+void p2p_peers_initialize();
 
 // ── Server ────────────────────────────────────────────────────────────────────
 #include "core/server.h"

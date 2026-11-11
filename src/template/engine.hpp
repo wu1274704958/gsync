@@ -52,19 +52,13 @@ R push_task_with_result(const std::function<R()> &task,bool force_delay)
     }
     else
     {
-        while (task_queue_running.load(std::memory_order_acquire)) {}
-        task_queue_push.store(true, std::memory_order_release);
-        volatile R result;
-        std::atomic_bool finished = false;
-        task_queue.push([&result,&task,&finished]()
-        {
-            result = task();
-            finished.store(true, std::memory_order_release);
-        });
-        task_queue_push.store(false, std::memory_order_release);
-        uv_async_send(&async_task_handle);
-        while (!finished.load(std::memory_order_acquire)) {}
-        return result;
+        auto promise = std::make_shared<std::promise<R>>();
+        auto future = promise->get_future();
+        push_task([promise, task]() {
+            try { promise->set_value(task()); }
+            catch (...) { promise->set_exception(std::current_exception()); }
+        }, force_delay);
+        return future.get();
     }
 }
 

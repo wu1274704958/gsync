@@ -59,6 +59,7 @@ void setup_server_connect_signals(mqas::core::engine<C>* inner_engine,
             // ③ 与 handle_new_connection_internal 完全对称的信号连接
             conn->on_close_signal.connect([hwnd, conn_hwnd, server_ctx](mqas::core::IConnect&)
             {
+                p2p_session_remove_connection(conn_hwnd);
                 destroy_connect(conn_hwnd);
                 if (server_ctx->on_client_disconnect)
                     server_ctx->on_client_disconnect(hwnd, conn_hwnd);
@@ -86,17 +87,14 @@ void setup_server_connect_signals(mqas::core::engine<C>* inner_engine,
                 });
             }
 
-            if (conn_ctx->on_stream_close)
+            conn->on_stream_close_signal.connect(
+                [conn_hwnd, conn_ctx](std::shared_ptr<mqas::core::IStream> stream)
             {
-                conn->on_stream_close_signal.connect(
-                    [conn_hwnd, conn_ctx](std::shared_ptr<mqas::core::IStream> stream)
-                {
-                    conn_ctx->on_stream_close(
-                        conn_hwnd,
-                        reinterpret_cast<GSY_StreamId>(stream->get_origin()),
-                        EC_Ok);
-                });
-            }
+                const auto sid = reinterpret_cast<GSY_StreamId>(stream->get_origin());
+                p2p_session_remove_stream(conn_hwnd, sid);
+                if (conn_ctx->on_stream_close)
+                    conn_ctx->on_stream_close(conn_hwnd, sid, EC_Ok);
+            });
         });
 }
 

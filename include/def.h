@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-    enum ErrorCode {
+    typedef enum ErrorCode {
         EC_Fail = -1,
         EC_Ok = 0,
         EC_Unknown,
@@ -29,12 +29,15 @@ extern "C" {
         EC_MakeStreamFailed,
         EC_InvalidStream,
         EC_WrongStreamState,
+        EC_NotSupported,
+        EC_Timeout,
+        EC_SessionBusy,
         //proto::p2p::RetCode begin
         EC_AlreadyExists = 1200,
         EC_NotExists,
         EC_PeerRejected,
         //proto::p2p::RetCode end
-    };
+    } ErrorCode;
 
     typedef void(*SICallback)(const char*,int);
     typedef void(*ICallback)(int);

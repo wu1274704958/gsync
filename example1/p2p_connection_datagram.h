@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-struct GSYNC_EXTERN GSY_P2PDatagramConnectionContext
+typedef struct GSYNC_EXTERN GSY_P2PDatagramConnectionContext
 {
     void(*on_connected)(ErrorCode, GSY_StreamId, GSY_PeerId,const char* peer_name, GSY_RequestId);
     void(*on_datagram_received)(const uint8_t*, size_t, GSY_StreamId, GSY_PeerId,GSY_ConnectionHwnd);
@@ -16,15 +16,19 @@ struct GSYNC_EXTERN GSY_P2PDatagramConnectionContext
     void(*on_connect_failed)(ErrorCode, GSY_StreamId, GSY_PeerId, GSY_RequestId);
     void(*on_error)(GSY_ConnectionHwnd, GSY_StreamId, ErrorCode, const char*, GSY_RequestId);
     uint32_t self_id;
-    const char* verify_token; // hex/binary token from NotifyConnectResult; required for client side
+    const char* verify_token; // Reserved for ABI compatibility; ignored by authenticated P2P.
     int verify_token_len;
     int use_relay; // 0 = direct connection, 1 = relay connection; optional for client side, ignored for server side
     int is_server;            // 0 = client (initiator), 1 = server (acceptor)
     void* extend;
     uint8_t _check_code; // do not modify
-};
+} GSY_P2PDatagramConnectionContext;
 
-GSY_StreamId GSYNC_EXTERN GSY_ConnectPeerDatagram(GSY_ConnectionHwnd handle,GSY_PeerId,GSY_P2PDatagramConnectionContext*,GSY_RequestId);
+// Completion runs on the SDK I/O thread, possibly before this function returns.
+// The context must remain alive until the connection and its callbacks end.
+typedef void (*GSY_DatagramStreamCreated)(ErrorCode, GSY_StreamId, GSY_RequestId, void*);
+ErrorCode GSYNC_EXTERN GSY_ConnectPeerDatagram(GSY_ConnectionHwnd handle,GSY_PeerId,
+    GSY_P2PDatagramConnectionContext*,GSY_RequestId, GSY_DatagramStreamCreated, void*);
 ErrorCode GSYNC_EXTERN GSY_SendDatagram(GSY_ConnectionHwnd handle,GSY_StreamId sid,const char* data,size_t size,GSY_RequestId request_id);
 ErrorCode GSYNC_EXTERN GSY_ReqDisconnectPeerDatagram(GSY_ConnectionHwnd handle,GSY_StreamId sid,const char* reason,GSY_RequestId request_id);
 

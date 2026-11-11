@@ -33,16 +33,26 @@ GSY_ConnectionHwnd connect_internal(GSY_EngineId engine_id,const char* config_fi
                 port,
                 context,hwnd]() {
                 auto engine = new EngineType(*io_cxt);
-                engine->init(config_file_path.c_str(),mqas::core::EngineFlags::None);
-                engine->start_recv();
-                engine->process_conns();
+                try
+                {
+                    engine->init(config_file_path.c_str(),mqas::core::EngineFlags::None);
+                    engine->start_recv();
+                    engine->process_conns();
 
-                if (!handle_new_connection_internal(hwnd,engine,ip_str,port,context))
+                    if (!handle_new_connection_internal(hwnd,engine,ip_str,port,context))
+                    {
+                        delete engine;
+                        return;
+                    }
+                    engine_map.insert({hwnd / MAX_CONNECTION_HWND, engine});
+                }
+                catch (...)
                 {
                     delete engine;
-                    return;
+                    recycle_connection_hwnd(hwnd);
+                    if (context && context->on_error)
+                        context->on_error(EC_ConnectFailed, hwnd);
                 }
-                engine_map.insert({hwnd / MAX_CONNECTION_HWND, engine});
             };
             push_task(task);
         }else {
@@ -109,6 +119,7 @@ bool handle_new_connection_internal(const GSY_ConnectionHwnd hwnd,ET* engine,con
 
     conn->on_close_signal.connect([hwnd,context](mqas::core::IConnect& c)
     {
+        p2p_session_remove_connection(hwnd);
         destroy_connect(hwnd);
         if (context->on_disconnect)
         {
@@ -132,13 +143,12 @@ bool handle_new_connection_internal(const GSY_ConnectionHwnd hwnd,ET* engine,con
             context->on_stream_open(hwnd,reinterpret_cast<GSY_StreamId>(stream->get_origin()),EC_Ok);
         });
     }
-    if (context->on_stream_close)
+    conn->on_stream_close_signal.connect([hwnd,context](std::shared_ptr<mqas::core::IStream> stream)
     {
-        conn->on_stream_close_signal.connect([hwnd,context](std::shared_ptr<mqas::core::IStream> stream)
-        {
-            context->on_stream_close(hwnd,reinterpret_cast<GSY_StreamId>(stream->get_origin()),EC_Ok);
-        });
-    }
+        const auto sid = reinterpret_cast<GSY_StreamId>(stream->get_origin());
+        p2p_session_remove_stream(hwnd, sid);
+        if (context->on_stream_close) context->on_stream_close(hwnd, sid, EC_Ok);
+    });
     return true;
 }
 

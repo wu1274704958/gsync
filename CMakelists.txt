@@ -4,6 +4,10 @@ include("SetupVCPKG")
 cmake_minimum_required(VERSION 3.21.0)
 project(gsync VERSION 0.1.0)
 
+if(GSYNC_BUILD_UNIT_TEST)
+  enable_testing()
+endif()
+
 include("SetupOutputDir")
 
 if(CMAKE_CXX_COMPILER_ID MATCHES MSVC)

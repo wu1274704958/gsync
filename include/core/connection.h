@@ -12,16 +12,20 @@
 extern "C" {
 #endif
 
+    #ifdef __cplusplus
     inline GSY_ConnectionHwnd InvalidConnection = 0;
+    #else
+    #define InvalidConnection ((GSY_ConnectionHwnd)0)
+    #endif
 
-    struct GSYNC_EXTERN GSY_BaseConnectionContext {
+    typedef struct GSYNC_EXTERN GSY_BaseConnectionContext {
         IUICallback on_connect;
         IUICallback on_disconnect;
         IUICallback on_error;
         void(*on_stream_open)(GSY_ConnectionHwnd,GSY_StreamId,ErrorCode);
         void(*on_stream_close)(GSY_ConnectionHwnd,GSY_StreamId,ErrorCode);
         void* extend;
-    };
+    } GSY_BaseConnectionContext;
 
     GSY_ConnectionHwnd GSYNC_EXTERN GSY_connect(GSY_EngineId engine_id,const char* config_file,
         const char* ip,short port,GSY_BaseConnectionContext* cxt);

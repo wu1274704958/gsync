@@ -24,8 +24,7 @@ std::mutex engines_mutex;
 std::atomic_bool is_running = false;
 std::atomic_bool is_context_initialized = false;
 std::queue<std::function<void()>> task_queue;
-std::atomic_bool task_queue_push = false;
-std::atomic_bool task_queue_running = false;
+std::mutex task_queue_mutex;
 uv_async_t async_task_handle;
 
 
@@ -40,6 +39,7 @@ int GSY_initialize(int flag,GSY_Context* cxt)
     global_context = cxt;
     main_thread = std::make_unique<std::thread>(mian_func);
     waiting_for_context_initialized();
+    p2p_peers_initialize();
     return EC_Ok;
 }
 
@@ -47,9 +47,14 @@ int GSY_terminate()
 {
     if (!is_running)
         return EC_NotInitialized;
+    if (main_thread && std::this_thread::get_id() == main_thread->get_id())
+        return EC_Fail;
+    p2p_peers_shutdown();
     is_running = false;
     uv_async_send(&async_task_handle);
     main_thread->join();
+    p2p_session_shutdown();
+    is_context_initialized.store(false, std::memory_order_release);
     // destroy all
     for (const auto &engine: engine_map | std::views::values) {
         destroy_engine(engine);
@@ -66,23 +71,25 @@ void push_task(const std::function<void()> &task,bool force_delay) {
     if (!force_delay && std::this_thread::get_id() == main_thread->get_id()) {
         task();
     }else {
-        while (task_queue_running.load(std::memory_order_acquire)) {}
-        task_queue_push.store(true, std::memory_order_release);
-        task_queue.push(task);
-        task_queue_push.store(false, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> lock(task_queue_mutex);
+            task_queue.push(task);
+        }
         uv_async_send(&async_task_handle);
     }
 }
 
 void task_execute_callback(uv_async_t* handle)
 {
-    if (task_queue_push.load(std::memory_order_acquire) == false){
-        task_queue_running.store(true, std::memory_order_release);
-        while(!task_queue.empty()) {
-            task_queue.front()();
+    for (;;) {
+        std::function<void()> task;
+        {
+            std::lock_guard<std::mutex> lock(task_queue_mutex);
+            if (task_queue.empty()) break;
+            task = std::move(task_queue.front());
             task_queue.pop();
         }
-        task_queue_running.store(false, std::memory_order_release);
+        task();
     }
 }
 

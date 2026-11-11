@@ -17,6 +17,11 @@ static GSY_ConnectionHwnd g_conn_hwnd = InvalidConnection;
 static GSY_StreamId       g_stream_id = INVALID_SID;
 static const char* Token = "12345678";
 
+static void on_stream_created(ErrorCode code, GSY_StreamId sid, GSY_RequestId rid, void*)
+{
+    printf("[datagram] stream creation code=%d stream=%llu request=%u\n", code, sid, rid);
+}
+
 // ── datagram callbacks (client side) ─────────────────────────────────────────
 
 static void on_datagram_connected(ErrorCode code, GSY_StreamId sid,
@@ -83,7 +88,11 @@ static void on_connect(int code, unsigned int conn_hwnd)
         dg_ctx->verify_token          = Token;
         dg_ctx->verify_token_len      = static_cast<int>(strlen(Token));
         dg_ctx->self_id = 1;
-        GSY_ConnectPeerDatagram(conn_hwnd, INVALID_PID, dg_ctx, NONE_RID);
+        const auto result = GSY_ConnectPeerDatagram(conn_hwnd, INVALID_PID, dg_ctx, 41, on_stream_created, nullptr);
+        if (result == EC_EngineNotMatch) {
+            printf("[datagram] unauthenticated connection rejected\n");
+            delete dg_ctx;
+        }
     }
 }
 

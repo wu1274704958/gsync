@@ -57,8 +57,6 @@ std::shared_ptr<S> check_stream_valid(GSY_ConnectionHwnd handle,const std::share
 }
 
 ErrorCode mapping_ret_code(mqas::tools::proto::p2p::RetCode ret_code);
-void push_socket(std::shared_ptr<mqas::io::UdpSocket> sock);
-std::shared_ptr<mqas::io::UdpSocket> get_socket(const size_t handle);
 
 #define CHECK_CONNECT_VALID(handle)                                                                             \
 std::shared_ptr<mqas::core::IConnect> conn = nullptr;                                                           \

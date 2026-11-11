@@ -12,11 +12,12 @@
 extern "C" {
 #endif
 
-    struct GSYNC_EXTERN GSY_Context {
+    typedef struct GSYNC_EXTERN GSY_Context {
         SICallback on_error;
-    };
+    } GSY_Context;
 
     int GSYNC_EXTERN GSY_initialize(int flag,GSY_Context* cxt);
+    // Must not be called from an SDK I/O callback; returns EC_Fail there.
     int GSYNC_EXTERN GSY_terminate();
 
 #if __cplusplus
