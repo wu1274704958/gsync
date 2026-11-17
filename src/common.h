@@ -6,8 +6,16 @@
 #define GSYNC_COMMON_H
 
 #include <unordered_map>
+#include <map>
+#include <string>
+#include <compare>
+#include <toml.hpp>
 #include <mutex>
 #include <queue>
+#include <atomic>
+#include <vector>
+#include <memory>
+#include "core/server.h"
 #include "def.h"
 #include "uv.h"
 #include "core/engine.h"
@@ -20,7 +28,19 @@ namespace mqas::core {
 
 constexpr GSY_ConnectionHwnd MAX_CONNECTION_HWND = 100000;
 
-extern std::unordered_map<GSY_EngineId,mqas::core::engine_base_interface*> engine_map;
+struct EngineKey {
+    GSY_EngineId type;
+    std::string bind_ip;
+    uint16_t port;
+    auto operator<=>(const EngineKey&) const = default;
+};
+struct EngineEntry {
+    EngineKey key;
+    sockaddr_storage bind_addr{};
+    mqas::core::engine_base_interface* engine = nullptr;
+};
+extern std::map<EngineKey, std::shared_ptr<EngineEntry>> engine_map;
+extern std::unordered_map<GSY_ConnectionHwnd, std::weak_ptr<EngineEntry>> connection_engines;
 extern std::unordered_map<GSY_ConnectionHwnd,std::weak_ptr<mqas::core::IConnect>> connect_map;
 extern std::mutex engines_mutex;
 extern std::mutex connect_mutex;
@@ -38,7 +58,7 @@ extern uv_async_t async_task_handle;
 extern GSY_ConnectionHwnd get_new_connection_hwnd(GSY_EngineId);
 extern void recycle_connection_hwnd(GSY_ConnectionHwnd);
 extern void destroy_connect(GSY_ConnectionHwnd);
-extern bool destroy_engine_by_conn_hwnd(GSY_ConnectionHwnd);
+extern void cleanup_connection_engine(std::weak_ptr<EngineEntry>);
 void p2p_session_remove_stream(GSY_ConnectionHwnd, GSY_StreamId);
 void p2p_session_remove_connection(GSY_ConnectionHwnd);
 void p2p_session_shutdown();
@@ -57,10 +77,35 @@ constexpr GSY_ServerHwnd MAX_SERVER_HWND = 1000;
 // client-produced conn_hwnds.
 constexpr GSY_EngineId SERVER_ENGINE_ID_OFFSET = 50000;
 
-extern std::unordered_map<GSY_ServerHwnd, struct ServerEntry> server_map;
+struct ServerEngineEntry;
+struct ServerEntry {
+    GSY_ServerHwnd hwnd = InvalidServer;
+    GSY_BaseServerContext* ctx = nullptr;
+    std::atomic_bool stopping{false};
+    bool started = false;
+    bool finalized = false;
+    std::shared_ptr<const toml::value> config;
+    std::weak_ptr<ServerEngineEntry> owner;
+    std::unordered_map<GSY_ConnectionHwnd, std::weak_ptr<mqas::core::IConnect>> connections;
+};
+struct ServerEngineEntry {
+    EngineKey key;
+    sockaddr_storage bind_addr{};
+    mqas::core::engine_base_interface* engine = nullptr;
+    std::vector<std::shared_ptr<ServerEntry>> servers;
+};
+extern std::map<EngineKey, std::shared_ptr<ServerEngineEntry>> server_engines;
+extern std::unordered_map<GSY_ServerHwnd, std::shared_ptr<ServerEntry>> server_map;
 extern std::mutex server_mutex;
+extern bool server_shutting_down;
 extern GSY_ServerHwnd get_new_server_hwnd(GSY_EngineId engine_id);
 extern void recycle_server_hwnd(GSY_ServerHwnd);
+extern bool server_endpoint_overlaps(const sockaddr&);
+extern void finish_server_stop(const std::shared_ptr<ServerEntry>&);
+extern void cleanup_server_engine(const std::shared_ptr<ServerEngineEntry>&);
+extern void fail_server_start(const std::shared_ptr<ServerEntry>&, ErrorCode);
+extern void shutdown_server_engines();
+extern void wait_for_server_shutdown();
 
 void push_task(const std::function<void()>&,bool force_delay = false);
 template<typename R>

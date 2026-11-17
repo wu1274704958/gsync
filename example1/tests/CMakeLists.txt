@@ -92,6 +92,11 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME p2p_unauthenticated_rejected COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test_stream_examples.py p2p
         $<TARGET_FILE:test_launch_server> $<TARGET_FILE:test_connect_server>)
+    add_test(NAME p2p_isolated_same_process COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_p2p.py $<TARGET_FILE:gsync_e1>
+        $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/example1/tests/p2p_isolated_config.toml)
+    set_tests_properties(p2p_isolated_same_process PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
     add_test(NAME p2p_peer COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test_p2p_peer.py $<TARGET_FILE:test_lobby_registration>
         $<TARGET_FILE:test_p2p_peer> ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
@@ -104,4 +109,10 @@ if(Python3_Interpreter_FOUND)
     set_tests_properties(p2p_peer p2p_peer_server_late p2p_peer_client_late p2p_peer_bad_identity_late
         p2p_peer_timeout_late p2p_peer_cancel_late p2p_peer_bad_config_late
         p2p_peer_client_cancel_late p2p_peer_lobby_close_late p2p_peer_parallel_late PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+endif()
+
+if(Python3_Interpreter_FOUND)
+    add_test(NAME server_engine_reuse COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_server_engine_reuse.py ${CMAKE_SOURCE_DIR} $<TARGET_FILE:gsync_e1_test>)
+    set_tests_properties(server_engine_reuse PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 endif()

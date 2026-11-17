@@ -30,12 +30,13 @@ extern "C" {
         void* extend;
     };
 
-    // 启动服务器，返回 GSY_ServerHwnd；engine_id 用于匹配 AllEngineType 中对应的 EngineType
+    // 兼容的固定监听地址可共享 engine；各句柄按启动顺序尝试接收新连接。
+    // cxt 须保持有效，直到启动失败回调或停止回调返回。
     GSY_ServerHwnd GSYNC_EXTERN GSY_launch_server(GSY_EngineId engine_id,
                                                    const char* config_file,
                                                    GSY_BaseServerContext* cxt);
 
-    // 停止服务器（异步，内部通过 push_task 执行 close）
+    // 异步停止此句柄并关闭它接受的连接；连接断开回调完成后触发 on_stopped。
 
     int GSYNC_EXTERN GSY_stop_server(GSY_ServerHwnd hwnd);
 

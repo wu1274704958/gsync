@@ -1,76 +1,134 @@
 #include "core/server.h"
 #include "mqas/tools/unique_id_generator.h"
+#include "mqas/core/connect.h"
+#include "mqas/core/engine_settings.h"
 #include "../common.h"
+#include <algorithm>
+#include <condition_variable>
 
-// ─── server entry ─────────────────────────────────────────────────────────────
-struct ServerEntry
-{
-    mqas::core::engine_base_interface* engine = nullptr;
-    GSY_BaseServerContext*             ctx    = nullptr;
-};
-
-// ─── server_map & synchronization ────────────────────────────────────────────
-std::unordered_map<GSY_ServerHwnd, ServerEntry> server_map;
+std::map<EngineKey, std::shared_ptr<ServerEngineEntry>> server_engines;
+std::unordered_map<GSY_ServerHwnd, std::shared_ptr<ServerEntry>> server_map;
 std::mutex server_mutex;
-
+bool server_shutting_down = false; // guarded by server_mutex
 static mqas::tools::unique_id_generator<GSY_ServerHwnd, true> server_id_generator;
+static std::condition_variable server_shutdown_cv;
+static bool server_shutdown_pending = false; // I/O thread only
+static bool server_shutdown_complete = false; // guarded by server_mutex
 
-// ─── handle helpers ──────────────────────────────────────────────────────────
-// server_hwnd encoding:  engine_id * MAX_SERVER_HWND + local_id
-// mirrors the connection hwnd pattern so callers can identify the engine at a glance.
+static void check_server_shutdown()
+{
+    if (!server_shutdown_pending || !server_engines.empty()) return;
+    std::lock_guard lock(server_mutex);
+    if (!server_map.empty()) return;
+    server_shutdown_pending = false;
+    server_shutdown_complete = true;
+    server_shutdown_cv.notify_all();
+}
+
 GSY_ServerHwnd get_new_server_hwnd(GSY_EngineId engine_id)
 {
-    const auto local_id = server_id_generator.next();
-    if (local_id == 0 || local_id >= MAX_SERVER_HWND)
-    {
-        LOG(ERROR) << "GSY server handle local_id is over limit";
-        server_id_generator.remove(local_id);
+    const auto id = server_id_generator.next();
+    if (id == 0 || id >= MAX_SERVER_HWND) {
+        server_id_generator.remove(id);
         return InvalidServer;
     }
-    return engine_id * MAX_SERVER_HWND + local_id;
+    return engine_id * MAX_SERVER_HWND + id;
 }
-
-void recycle_server_hwnd(const GSY_ServerHwnd hwnd)
+void recycle_server_hwnd(GSY_ServerHwnd hwnd)
 {
-    if (hwnd == InvalidServer)
-        return;
-    // extract local_id that was registered in the generator
-    const auto local_id = hwnd % MAX_SERVER_HWND;
-    server_id_generator.remove(local_id);
+    if (hwnd != InvalidServer) server_id_generator.remove(hwnd % MAX_SERVER_HWND);
 }
-
-// ─── called from server.hpp after engine init ────────────────────────────────
-void register_server_entry(GSY_ServerHwnd hwnd,
-                            mqas::core::engine_base_interface* engine,
-                            GSY_BaseServerContext* ctx)
+bool server_endpoint_overlaps(const sockaddr& addr)
 {
-    std::lock_guard<std::mutex> lock(server_mutex);
-    server_map.insert({hwnd, ServerEntry{engine, ctx}});
+    for (const auto& [key, entry] : server_engines)
+        if (mqas::core::bind_endpoints_overlap(reinterpret_cast<const sockaddr&>(entry->bind_addr), addr)) return true;
+    return false;
 }
-
-// ─── GSY_stop_server ─────────────────────────────────────────────────────────
+void cleanup_server_engine(const std::shared_ptr<ServerEngineEntry>& entry)
+{
+    if (!entry || !entry->servers.empty() || !entry->engine) return;
+    auto it = server_engines.find(entry->key);
+    if (it == server_engines.end() || it->second != entry) return;
+    if (destroy_engine_if_empty(entry->engine)) {
+        entry->engine = nullptr;
+        server_engines.erase(it);
+        check_server_shutdown();
+    }
+}
+void finish_server_stop(const std::shared_ptr<ServerEntry>& server)
+{
+    if (!server->stopping || server->finalized || !server->connections.empty()) return;
+    server->finalized = true;
+    auto owner = server->owner.lock();
+    if (owner) {
+        std::erase(owner->servers, server);
+        push_task([owner] { cleanup_server_engine(owner); }, true);
+    }
+    {
+        std::lock_guard lock(server_mutex);
+        auto it = server_map.find(server->hwnd);
+        if (it != server_map.end() && it->second == server) server_map.erase(it);
+    }
+    if (server->ctx && server->ctx->on_stopped) server->ctx->on_stopped(EC_Ok, server->hwnd);
+    recycle_server_hwnd(server->hwnd);
+    check_server_shutdown();
+}
+void fail_server_start(const std::shared_ptr<ServerEntry>& server, ErrorCode error)
+{
+    bool cancelled = false;
+    {
+        std::lock_guard lock(server_mutex);
+        cancelled = server->stopping;
+        if (!cancelled) {
+            server->finalized = true;
+            auto it = server_map.find(server->hwnd);
+            if (it != server_map.end() && it->second == server) server_map.erase(it);
+        }
+    }
+    if (cancelled) { finish_server_stop(server); return; }
+    if (server->ctx && server->ctx->on_error) server->ctx->on_error(error, server->hwnd);
+    recycle_server_hwnd(server->hwnd);
+}
 int GSY_stop_server(GSY_ServerHwnd hwnd)
 {
-    ServerEntry entry{};
-
+    std::shared_ptr<ServerEntry> server;
     {
-        std::lock_guard<std::mutex> lock(server_mutex);
-        if (!server_map.contains(hwnd))
-            return EC_InvalidHandler;
-        entry = server_map[hwnd];
-        server_map.erase(hwnd);
-        recycle_server_hwnd(hwnd);
+        std::lock_guard lock(server_mutex);
+        auto it = server_map.find(hwnd);
+        if (it == server_map.end() || it->second->stopping.exchange(true)) return EC_InvalidHandler;
+        server = it->second;
     }
-
-    // All lsquic calls must happen on the main loop thread ✓
-    // destroy_engine() is declared extern in engine.hpp and instantiated by
-    // GSY_TEMPLATE_BY_ENGINE_TYPE_FOR_ENGINE; ~sub_engine() calls close() internally.
-    push_task([entry, hwnd]()
-    {
-        destroy_engine(entry.engine);
-        if (entry.ctx && entry.ctx->on_stopped)
-            entry.ctx->on_stopped(EC_Ok, hwnd);
-    });
-
+    push_task([server] {
+        std::vector<std::shared_ptr<mqas::core::IConnect>> connections;
+        for (const auto& [id, weak] : server->connections) if (auto conn = weak.lock()) connections.push_back(conn);
+        for (const auto& conn : connections) if (!conn->is_closed()) conn->close();
+        finish_server_stop(server);
+    }, true);
     return EC_Ok;
+}
+void shutdown_server_engines()
+{
+    std::vector<std::shared_ptr<ServerEngineEntry>> engines;
+    std::vector<std::shared_ptr<ServerEntry>> servers;
+    {
+        std::lock_guard lock(server_mutex);
+        server_shutting_down = true;
+        server_shutdown_complete = false;
+        for (auto& [id, server] : server_map) { server->stopping = true; servers.push_back(server); }
+    }
+    server_shutdown_pending = true;
+    for (auto& [key, entry] : server_engines) engines.push_back(entry);
+    for (auto& server : servers) {
+        std::vector<std::shared_ptr<mqas::core::IConnect>> connections;
+        for (const auto& [id, weak] : server->connections) if (auto conn = weak.lock()) connections.push_back(conn);
+        for (const auto& conn : connections) if (!conn->is_closed()) conn->close();
+        finish_server_stop(server);
+    }
+    for (auto& entry : engines) cleanup_server_engine(entry);
+    check_server_shutdown();
+}
+void wait_for_server_shutdown()
+{
+    std::unique_lock lock(server_mutex);
+    server_shutdown_cv.wait(lock, [] { return server_shutdown_complete; });
 }

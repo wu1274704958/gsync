@@ -27,6 +27,9 @@ extern "C" {
         void* extend;
     } GSY_BaseConnectionContext;
 
+    /* Fixed bind endpoints reuse a matching engine when its normalized config
+       matches; config port 0 always creates a new engine. Asynchronous failures
+       are delivered to cxt->on_error. The context must outlive its callbacks. */
     GSY_ConnectionHwnd GSYNC_EXTERN GSY_connect(GSY_EngineId engine_id,const char* config_file,
         const char* ip,short port,GSY_BaseConnectionContext* cxt);
     int GSYNC_EXTERN GSY_disconnect(GSY_ConnectionHwnd handler);

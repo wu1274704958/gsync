@@ -1,0 +1,11 @@
+[engine_config]
+bind_ip="0.0.0.0"
+port=0
+log_level="info"
+alpn="echo"
+
+[p2p]
+name="g01"
+
+[lsquic_settings]
+es_datagrams=1

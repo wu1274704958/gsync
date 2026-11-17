@@ -18,7 +18,8 @@ GSY_Context* global_context;
 
 std::unique_ptr<std::thread> main_thread;
 
-std::unordered_map<GSY_EngineId,mqas::core::engine_base_interface *> engine_map;
+std::map<EngineKey, std::shared_ptr<EngineEntry>> engine_map;
+std::unordered_map<GSY_ConnectionHwnd, std::weak_ptr<EngineEntry>> connection_engines;
 std::mutex engines_mutex;
 
 std::atomic_bool is_running = false;
@@ -35,6 +36,7 @@ int GSY_initialize(int flag,GSY_Context* cxt)
 {
     if(is_running)
         return EC_AlreadyInitialized;
+    { std::lock_guard lock(server_mutex); server_shutting_down = false; }
     is_running = true;
     global_context = cxt;
     main_thread = std::make_unique<std::thread>(mian_func);
@@ -49,7 +51,10 @@ int GSY_terminate()
         return EC_NotInitialized;
     if (main_thread && std::this_thread::get_id() == main_thread->get_id())
         return EC_Fail;
+    { std::lock_guard lock(server_mutex); server_shutting_down = true; }
     p2p_peers_shutdown();
+    push_task_with_result<int>([] { shutdown_server_engines(); return 0; }, true);
+    wait_for_server_shutdown();
     is_running = false;
     uv_async_send(&async_task_handle);
     main_thread->join();
@@ -57,9 +62,10 @@ int GSY_terminate()
     is_context_initialized.store(false, std::memory_order_release);
     // destroy all
     for (const auto &engine: engine_map | std::views::values) {
-        destroy_engine(engine);
+        destroy_engine(engine->engine);
     }
     engine_map.clear();
+    connection_engines.clear();
     connect_map.clear();
     io_cxt.reset();
     context.reset();

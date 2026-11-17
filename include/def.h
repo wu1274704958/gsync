@@ -37,6 +37,7 @@ extern "C" {
         EC_NotExists,
         EC_PeerRejected,
         //proto::p2p::RetCode end
+        EC_EngineConfigMismatch = 1300,
     } ErrorCode;
 
     typedef void(*SICallback)(const char*,int);

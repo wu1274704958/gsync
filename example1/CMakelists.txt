@@ -31,6 +31,12 @@ add_custom_command(TARGET gsync_e1 POST_BUILD
 )
 
 if(GSYNC_BUILD_UNIT_TEST)
+        # Isolate test-only observability from the production SDK binary.
+        get_target_property(GSYNC_E1_TEST_SOURCES gsync_e1 SOURCES)
+        add_library(gsync_e1_test SHARED ${GSYNC_E1_TEST_SOURCES} tests/server_reuse_test_hooks.cpp)
+        target_compile_definitions(gsync_e1_test PRIVATE GSYNC_BUILD_UNIT_TEST=1)
+        target_link_libraries(gsync_e1_test PRIVATE mqas)
+        add_dependencies(gsync_e1_test gsync_e1_proto mqas)
         add_executable(te1 main.cpp)
         target_link_libraries(te1 PRIVATE gsync_e1)
         target_compile_definitions(te1 PRIVATE CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/conf.txt")

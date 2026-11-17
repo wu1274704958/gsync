@@ -31,7 +31,8 @@ with tempfile.TemporaryDirectory(prefix="gsync-peer-test-") as tmp:
     if delay in ("timeout", "cancel", "client_cancel", "bad_config", "lobby_close", "parallel"):
         env["GSYNC_TEST_PEER_SCENARIO"] = delay
     try:
-        lobby = subprocess.Popen([str(lobby_exe), "server", "30000"], cwd=lobby_dir,
+        lobby_duration = "45000" if delay == "timeout" else "30000"
+        lobby = subprocess.Popen([str(lobby_exe), "server", lobby_duration], cwd=lobby_dir,
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         procs.append(lobby)
         time.sleep(1)
@@ -44,7 +45,9 @@ with tempfile.TemporaryDirectory(prefix="gsync-peer-test-") as tmp:
         procs.append(join)
         outputs = []
         for name, process in (("join", join), ("host", host)):
-            output, _ = process.communicate(timeout=25)
+            # The timeout scenario deliberately keeps the other peer alive
+            # for 1150 sleep ticks; Windows scheduling can exceed 25 seconds.
+            output, _ = process.communicate(timeout=40 if delay == "timeout" else 25)
             print(f"{name} exit={process.returncode}\n{output}", flush=True)
             outputs.append((process.returncode, output))
         if any(code != 0 or "peer result=PASS" not in output for code, output in outputs):

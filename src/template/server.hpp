@@ -1,185 +1,163 @@
 #pragma once
 #include <type_traits>
+#include <cstring>
 #include "def.h"
 #include "../common.h"
 #include "core/server.h"
 #include "mqas/core/engine.h"
 #include "mqas/core/engine_driver.h"
+#include "mqas/core/engine_settings.h"
+#include "mqas/io/ip.h"
 
-// forward-declared in server.cpp
-extern void register_server_entry(GSY_ServerHwnd,
-                                   mqas::core::engine_base_interface*,
-                                   GSY_BaseServerContext*);
+extern bool server_shutting_down;
 
-// ─── setup_server_connect_signals ────────────────────────────────────────────
-// Typed helper: deduces C from mqas::core::engine<C>* so the on_new_connect_signal
-// lambda receives std::shared_ptr<C> (the concrete Connect type) and therefore has
-// access to on_new_stream_signal and on_stream_close_signal declared on Connect<S>.
 template<typename C>
-void setup_server_connect_signals(mqas::core::engine<C>* inner_engine,
-                                   GSY_ServerHwnd hwnd,
-                                   GSY_BaseServerContext* server_ctx)
+void setup_server_connect_signals(mqas::core::engine<C>* engine, const std::shared_ptr<ServerEngineEntry>& owner)
 {
-    inner_engine->on_new_connect_signal.connect(
-        [hwnd, server_ctx](std::shared_ptr<C> conn)
-        {
-            // SERVER_ENGINE_ID_OFFSET 保证 server 产生的 conn_hwnd 与 client 不冲突
-            const GSY_ConnectionHwnd conn_hwnd =
-                get_new_connection_hwnd(hwnd + SERVER_ENGINE_ID_OFFSET);
-            if (conn_hwnd == InvalidConnection)
-            {
+    std::weak_ptr<ServerEngineEntry> weak_owner = owner;
+    engine->on_connect_closed_signal.connect([weak_owner](std::shared_ptr<C>) {
+        if (auto entry = weak_owner.lock()) push_task([entry] { cleanup_server_engine(entry); }, true);
+    });
+    engine->on_new_connect_signal.connect([weak_owner](std::shared_ptr<C> conn) {
+        auto entry = weak_owner.lock();
+        if (!entry) { conn->close(); return; }
+        for (const auto& server : entry->servers) {
+            if (server->stopping || !server->ctx || !server->ctx->on_client_connect) continue;
+            const auto conn_hwnd = get_new_connection_hwnd(server->hwnd + SERVER_ENGINE_ID_OFFSET);
+            if (conn_hwnd == InvalidConnection) {
+                if (server->ctx->on_error) server->ctx->on_error(EC_ConnectOverLimit, server->hwnd);
                 conn->close();
-                if (server_ctx->on_error)
-                    server_ctx->on_error(EC_ConnectOverLimit, hwnd);
                 return;
             }
-
-            // ① 向业务层索取该连接专属 context
-            GSY_BaseConnectionContext* conn_ctx =
-                server_ctx->on_client_connect
-                    ? server_ctx->on_client_connect(hwnd, conn_hwnd)
-                    : nullptr;
-
-            if (!conn_ctx)
-            {
-                // 业务层拒绝 → 关闭连接并回收 handle
+            auto* conn_ctx = server->ctx->on_client_connect(server->hwnd, conn_hwnd);
+            if (!conn_ctx) {
                 recycle_connection_hwnd(conn_hwnd);
-                conn->close();
-                return;
+                continue;
             }
-
-            // ② 注册到 connect_map（加锁）
             {
-                std::lock_guard<std::mutex> lock(connect_mutex);
+                std::lock_guard lock(connect_mutex);
                 connect_map.insert({conn_hwnd, conn});
             }
-
+            server->connections.emplace(conn_hwnd, conn);
+            conn->set_connection_config(server->config);
             conn->set_cxt(conn_ctx);
-
-            // ③ 与 handle_new_connection_internal 完全对称的信号连接
-            conn->on_close_signal.connect([hwnd, conn_hwnd, server_ctx](mqas::core::IConnect&)
-            {
+            conn->on_close_signal.connect([server, conn_hwnd](mqas::core::IConnect&) {
                 p2p_session_remove_connection(conn_hwnd);
                 destroy_connect(conn_hwnd);
-                if (server_ctx->on_client_disconnect)
-                    server_ctx->on_client_disconnect(hwnd, conn_hwnd);
+                server->connections.erase(conn_hwnd);
+                if (server->ctx && server->ctx->on_client_disconnect)
+                    server->ctx->on_client_disconnect(server->hwnd, conn_hwnd);
+                finish_server_stop(server);
             });
-
-            conn->on_hsk_done_signal.connect(
-                [conn_hwnd, conn_ctx](mqas::core::IConnect&, ::lsquic_hsk_status status)
-            {
-                if (status == ::lsquic_hsk_status::LSQ_HSK_OK)
-                {
-                    if (conn_ctx->on_connect)
-                        conn_ctx->on_connect(EC_Ok, conn_hwnd);
-                }
+            conn->on_hsk_done_signal.connect([conn_hwnd, conn_ctx](mqas::core::IConnect&, ::lsquic_hsk_status status) {
+                if (status == LSQ_HSK_OK && conn_ctx->on_connect) conn_ctx->on_connect(EC_Ok, conn_hwnd);
             });
-
-            if (conn_ctx->on_stream_open)
-            {
-                conn->on_new_stream_signal.connect(
-                    [conn_hwnd, conn_ctx](std::shared_ptr<mqas::core::IStream> stream)
-                {
-                    conn_ctx->on_stream_open(
-                        conn_hwnd,
-                        reinterpret_cast<GSY_StreamId>(stream->get_origin()),
-                        EC_Ok);
-                });
-            }
-
-            conn->on_stream_close_signal.connect(
-                [conn_hwnd, conn_ctx](std::shared_ptr<mqas::core::IStream> stream)
-            {
+            if (conn_ctx->on_stream_open) conn->on_new_stream_signal.connect([conn_hwnd, conn_ctx](std::shared_ptr<mqas::core::IStream> stream) {
+                conn_ctx->on_stream_open(conn_hwnd, reinterpret_cast<GSY_StreamId>(stream->get_origin()), EC_Ok);
+            });
+            conn->on_stream_close_signal.connect([conn_hwnd, conn_ctx](std::shared_ptr<mqas::core::IStream> stream) {
                 const auto sid = reinterpret_cast<GSY_StreamId>(stream->get_origin());
                 p2p_session_remove_stream(conn_hwnd, sid);
-                if (conn_ctx->on_stream_close)
-                    conn_ctx->on_stream_close(conn_hwnd, sid, EC_Ok);
+                if (conn_ctx->on_stream_close) conn_ctx->on_stream_close(conn_hwnd, sid, EC_Ok);
             });
-        });
+            return;
+        }
+        conn->close();
+    });
 }
 
-// ─── handle_new_server_internal ─────────────────────────────────────────────
-// Must be called from inside push_task — all lsquic calls are on the main loop thread.
-template<typename ET>
-requires std::is_base_of_v<mqas::core::engine_base_interface, ET>
-void handle_new_server_internal(GSY_ServerHwnd hwnd,
-                                 ET* engine,
-                                 const std::string& config_file,
-                                 GSY_BaseServerContext* server_ctx)
-{
-    // ── 1. init / start (lsquic calls — inside push_task ✓) ──────────────
-    engine->init(config_file.c_str(), mqas::core::EngineFlags::Server);
-    engine->start_recv();
-    engine->process_conns();
-
-    // ── 2. 注册到 server_map（加锁，通过 register_server_entry）────────────
-    register_server_entry(hwnd, engine, server_ctx);
-
-    // ── 3. 监听新连接 ────────────────────────────────────────────────────
-    // engine->get_engine() returns shared_ptr<engine<C>>; pass raw ptr so
-    // setup_server_connect_signals can deduce C and type the lambda correctly.
-    setup_server_connect_signals(engine->get_engine().get(), hwnd, server_ctx);
-
-    // ── 4. 通知业务层服务器已就绪 ─────────────────────────────────────────
-    if (server_ctx->on_started)
-        server_ctx->on_started(EC_Ok, hwnd);
-}
-
-// ─── launch_server_internal ──────────────────────────────────────────────────
-// Template recursion identical in structure to connect_internal.
-// engine_id - 1 == I  → matched EngineType: allocate hwnd, push_task to init.
-// otherwise           → recurse to I+1.
 template<size_t I, typename TU>
 requires std::is_base_of_v<mqas::core::engine_base_interface, std::tuple_element_t<I, TU>>
-GSY_ServerHwnd launch_server_internal(GSY_EngineId engine_id,
-                                       const char* config_file,
-                                       GSY_BaseServerContext* server_ctx)
+GSY_ServerHwnd launch_server_internal(GSY_EngineId engine_id, const char* config_file, GSY_BaseServerContext* ctx)
 {
-    if (engine_id - 1 == I)
-    {
-        using EngineType = std::tuple_element_t<I, TU>;
-
-        // Allocate handle: encodes engine_id so callers can identify the engine at a glance
-        // server_hwnd = engine_id * MAX_SERVER_HWND + local_id
-        const GSY_ServerHwnd hwnd = get_new_server_hwnd(engine_id);
-        if (hwnd == InvalidServer)
-        {
-            if (server_ctx->on_error)
-                server_ctx->on_error(EC_ConnectOverLimit, InvalidServer);
-            return InvalidServer;
-        }
-
-        // All engine init and lsquic calls go through push_task ✓
-        push_task([hwnd,
-                   config = std::string(config_file),
-                   server_ctx]()
-        {
-            auto* engine = new EngineType(*io_cxt);
-            handle_new_server_internal(hwnd, engine, config, server_ctx);
-        });
-
-        return hwnd;
+    if (engine_id - 1 != I) {
+        if constexpr (I + 1 < std::tuple_size_v<TU>) return launch_server_internal<I + 1, TU>(engine_id, config_file, ctx);
+        if (ctx && ctx->on_error) ctx->on_error(EC_EngineNotMatch, InvalidServer);
+        return InvalidServer;
     }
-    else
+    if (!is_running || !config_file || !ctx) return InvalidServer;
+    using EngineType = std::tuple_element_t<I, TU>;
+    auto server = std::make_shared<ServerEntry>();
+    server->ctx = ctx;
     {
-        if constexpr (I + 1 >= std::tuple_size_v<TU>)
-        {
-            if (server_ctx->on_error)
-                server_ctx->on_error(EC_EngineNotMatch, InvalidServer);
-            return InvalidServer;
-        }
-        else
-        {
-            return launch_server_internal<I + 1, TU>(engine_id, config_file, server_ctx);
-        }
+        std::lock_guard lock(server_mutex);
+        if (server_shutting_down || !is_running) return InvalidServer;
+        server->hwnd = get_new_server_hwnd(engine_id);
+        if (server->hwnd != InvalidServer) server_map.emplace(server->hwnd, server);
     }
+    if (server->hwnd == InvalidServer) {
+        if (ctx->on_error) ctx->on_error(EC_ConnectOverLimit, InvalidServer);
+        return InvalidServer;
+    }
+    push_task([server, engine_id, path = std::string(config_file)] {
+        if (server->stopping) { finish_server_stop(server); return; }
+        std::shared_ptr<ServerEngineEntry> created;
+        try {
+            auto parsed = std::make_shared<toml::value>(toml::parse(path));
+            mqas::core::engine_driver::normalize_engine_config(parsed, path.c_str());
+            const auto config = toml::find<mqas::core::engine_config>(*parsed, "engine_config");
+            sockaddr bind_addr{};
+            if (!mqas::io::Ip::str2addr_ipv4(config.bind_ip.c_str(), config.port, bind_addr)) {
+                fail_server_start(server, EC_InvalidAddress); return;
+            }
+            EngineKey key{engine_id, mqas::io::Ip::addr2str_ipv4(bind_addr), config.port};
+            std::shared_ptr<ServerEngineEntry> owner;
+            if (config.port != 0) {
+                if (auto it = server_engines.find(key); it != server_engines.end()) {
+                    owner = it->second;
+                    auto* engine = dynamic_cast<EngineType*>(owner->engine);
+                    if (!engine) { fail_server_start(server, EC_EngineNotMatch); return; }
+                    ::lsquic_engine_settings storage{};
+                    const auto candidate = mqas::core::prepare_engine_settings(*parsed, mqas::core::EngineFlags::Server, bind_addr, storage);
+                    if (engine->get_settings_hash() != mqas::core::EngineSettingsHasher{}(candidate) || engine->get_settings_view() != candidate) {
+                        fail_server_start(server, EC_EngineConfigMismatch); return;
+                    }
+                } else if (server_endpoint_overlaps(bind_addr)) {
+                    fail_server_start(server, EC_AlreadyExists); return;
+                }
+                for (const auto& [existing, entry] : engine_map)
+                    if (mqas::core::bind_endpoints_overlap(reinterpret_cast<const sockaddr&>(entry->bind_addr), bind_addr)) {
+                        fail_server_start(server, EC_AlreadyExists); return;
+                    }
+            }
+            if (!owner) {
+                auto engine = std::make_unique<EngineType>(*io_cxt);
+                engine->init(*parsed, path.c_str(), mqas::core::EngineFlags::Server);
+                key.port = mqas::io::Ip::addr_get_port(engine->get_local_addr());
+                if (server_endpoint_overlaps(engine->get_local_addr())) { fail_server_start(server, EC_AlreadyExists); return; }
+                for (const auto& [existing, entry] : engine_map)
+                    if (mqas::core::bind_endpoints_overlap(reinterpret_cast<const sockaddr&>(entry->bind_addr), engine->get_local_addr())) {
+                        fail_server_start(server, EC_AlreadyExists); return;
+                    }
+                owner = std::make_shared<ServerEngineEntry>();
+                owner->key = key;
+                std::memcpy(&owner->bind_addr, &engine->get_local_addr(), sizeof(sockaddr_in));
+                owner->engine = engine.get();
+                setup_server_connect_signals(engine->get_engine().get(), owner);
+                server_engines.emplace(key, owner);
+                created = owner;
+                auto* running_engine = engine.release();
+                running_engine->start_recv();
+                running_engine->process_conns();
+            }
+            server->config = std::move(parsed);
+            server->owner = owner;
+            owner->servers.push_back(server);
+            server->started = true;
+            if (server->stopping) { finish_server_stop(server); return; }
+            if (server->ctx->on_started) server->ctx->on_started(EC_Ok, server->hwnd);
+        } catch (...) {
+            if (created) {
+                auto it = server_engines.find(created->key);
+                if (it != server_engines.end() && it->second == created) server_engines.erase(it);
+                if (created->engine) { auto* engine = created->engine; created->engine = nullptr; destroy_engine(engine); }
+            }
+            fail_server_start(server, EC_ConnectFailed);
+        }
+    }, true);
+    return server->hwnd;
 }
-
-// ─── Macro ───────────────────────────────────────────────────────────────────
-#define GSY_TEMPLATE_BY_ENGINE_TYPE_FOR_SERVER(ET)                                          \
-GSY_ServerHwnd GSYNC_EXTERN GSY_launch_server(GSY_EngineId engine_id,                      \
-                                               const char* config_file,                     \
-                                               GSY_BaseServerContext* cxt)                  \
-{                                                                                           \
-    return launch_server_internal<0, ET>(engine_id, config_file, cxt);                     \
-}                                                                                           \
+#define GSY_TEMPLATE_BY_ENGINE_TYPE_FOR_SERVER(ET) \
+GSY_ServerHwnd GSYNC_EXTERN GSY_launch_server(GSY_EngineId engine_id, const char* config_file, GSY_BaseServerContext* cxt) { \
+    return launch_server_internal<0, ET>(engine_id, config_file, cxt); \
+}

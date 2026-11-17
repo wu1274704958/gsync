@@ -18,27 +18,37 @@ std::unordered_map<GSY_ConnectionHwnd,std::weak_ptr<mqas::core::IConnect>> conne
 std::mutex connect_mutex;
 
 void destroy_connect(const GSY_ConnectionHwnd hwnd) {
-    std::lock_guard<std::mutex> lock(connect_mutex);
-    if (connect_map.contains(hwnd)) {
-        //close connection
-        const auto connection = connect_map[hwnd];
-        connect_map.erase(hwnd);
-        if (!connection.expired()) {
-            if (const auto conn = connection.lock();conn) {
-                if (!conn->is_closed()) {
-                    conn->close();
-                }
-            }
-        }
+    std::shared_ptr<mqas::core::IConnect> conn;
+    {
+        std::lock_guard<std::mutex> lock(connect_mutex);
+        auto it = connect_map.find(hwnd);
+        if (it == connect_map.end()) return;
+        conn = it->second.lock();
+        connect_map.erase(it);
+    }
+    if (auto owner = connection_engines.find(hwnd); owner != connection_engines.end()) {
+        auto entry = owner->second;
+        connection_engines.erase(owner);
+        push_task([entry] { cleanup_connection_engine(entry); }, true);
     }
     recycle_connection_hwnd(hwnd);
+    if (conn && !conn->is_closed()) conn->close();
 }
 
 void push_destroy_connect_task(GSY_ConnectionHwnd hwnd) {
-    auto task = [hwnd]() {
-        destroy_connect(hwnd);
-    };
-    push_task(task);
+    push_task([hwnd]() {
+        std::shared_ptr<mqas::core::IConnect> conn;
+        {
+            std::lock_guard<std::mutex> lock(connect_mutex);
+            auto it = connect_map.find(hwnd);
+            if (it != connect_map.end()) conn = it->second.lock();
+        }
+        // Keep the handle registered until its close callback runs so that a
+        // recycled handle cannot be mistaken for this connection.
+        if (conn) {
+            if (!conn->is_closed()) conn->close();
+        } else destroy_connect(hwnd);
+    }, true);
 }
 
 int GSY_disconnect(GSY_ConnectionHwnd handler)
@@ -61,19 +71,21 @@ int GSY_is_connected(unsigned int handler)
         std::atomic_bool completed = false;
         std::atomic_bool result = false;
         push_task([&completed,&result,handler]() {
-            std::lock_guard<std::mutex> lock(connect_mutex);
-            if (!connect_map.contains(handler)) {
-                result.store(false,std::memory_order::release);
-            }else {
-                const auto conn = connect_map.at(handler).lock();
-                if (!conn) {
-                    result.store(false,std::memory_order::release);
-                    destroy_connect(handler);
-                }else {
-                    result.store(conn->get_hsk_status() == ::lsquic_hsk_status::LSQ_HSK_OK,std::memory_order::release);
+            bool expired = false;
+            {
+                std::lock_guard<std::mutex> lock(connect_mutex);
+                const auto it = connect_map.find(handler);
+                if (it == connect_map.end()) {
+                    result.store(false, std::memory_order::release);
+                } else if (const auto conn = it->second.lock()) {
+                    result.store(conn->get_hsk_status() == ::lsquic_hsk_status::LSQ_HSK_OK, std::memory_order::release);
+                } else {
+                    result.store(false, std::memory_order::release);
+                    expired = true;
                 }
             }
-            completed.store(true,std::memory_order::release);
+            if (expired) destroy_connect(handler);
+            completed.store(true, std::memory_order::release);
         });
         connect_mutex.unlock();
         while (!completed.load(std::memory_order::acquire)) {}
@@ -83,15 +95,15 @@ int GSY_is_connected(unsigned int handler)
     return 0;
 }
 
-bool destroy_engine_by_conn_hwnd(const GSY_ConnectionHwnd hwnd) {
-    std::lock_guard<std::mutex> lock(engines_mutex);
-    if (const auto engine_id = hwnd / MAX_CONNECTION_HWND; engine_map.contains(engine_id)) {
-        if (destroy_engine_if_empty(engine_map.at(engine_id))) {
-            engine_map.erase(engine_id);
-            return true;
-        }
+void cleanup_connection_engine(std::weak_ptr<EngineEntry> weak) {
+    auto entry = weak.lock();
+    if (!entry) return;
+    auto it = engine_map.find(entry->key);
+    if (it == engine_map.end() || it->second != entry) return;
+    if (destroy_engine_if_empty(entry->engine)) {
+        entry->engine = nullptr;
+        engine_map.erase(it);
     }
-    return false;
 }
 
 GSY_ConnectionHwnd get_new_connection_hwnd(const GSY_EngineId engine_id) {
