@@ -9,3 +9,16 @@ message ReqConnectDatagram {
 message RespondConnectDatagram {
     string name = 1;
 }
+
+message ChannelControl {
+    enum Action {
+        OPEN = 0;
+        CLOSE = 1;
+        OPEN_ACK = 2;
+        CLOSE_ACK = 3;
+    }
+    optional Action action = 1;
+    uint32 request_id = 2;
+    bool accepted = 3;
+    string reason = 4;
+}

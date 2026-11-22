@@ -14,7 +14,7 @@
 
 1. lobby 报告 `EC_Ok` 且 `is_server == 0` 后，调用 `GSY_connect_session(config, result->session_handle, &conn_ctx, &connection)`。返回 `EC_Pending` 表示连接已开始，等 `conn_ctx.on_connect` 后使用连接句柄。失败通过 `conn_ctx.on_error` 报告。
 2. 调用 `GSY_ConnectPeerDatagram(connection, peer_id, local_stream_id, &datagram_ctx, request_id, created, user)`。创建完成回调给出本地 stream 句柄，`datagram_ctx.on_connected` 表示双方已接受握手。若收到业务拒绝，`on_stream_rejected` 提供原因，`on_connect_failed` 报告失败。
-3. 使用 `GSY_GetPeerStreamIds(connection, stream, &local_stream_id, &peer_stream_id)` 读取双方业务标识，或用 `GSY_FindPeerStream(connection, peer_stream_id, &stream)` 从对端标识查找本地 stream。业务标识为非零 `GSY_P2PStreamId`（`uint32_t`），在每条连接内按方向分别唯一。只有握手成功的 stream 可查询。使用本地 stream 句柄调用 `GSY_SendDatagram`。
+3. 使用 `GSY_GetPeerStreamIds(connection, stream, &local_stream_id, &peer_stream_id)` 读取双方业务标识，或用 `GSY_FindPeerStream(connection, peer_stream_id, &stream)` 从对端标识查找本地 stream。业务标识为非零 `GSY_P2PStreamId`（`uint32_t`），在每条连接内按方向分别唯一。只有握手成功的 stream 可查询。先调用 `GSY_OpenDatagramChannel(connection, stream, request_id)`。返回 `EC_Pending` 后等待 `on_channel_result` 报告成功，再用本地 stream 句柄调用 `GSY_SendDatagram`。对端可通过 `on_channel_request` 接受或拒绝，未设置时默认接受。channel 为单向，反方向发送需由另一端独立打开。使用 `GSY_CloseDatagramChannel` 关闭发送方向，成功后可重新打开。
 
 ## 生命周期
 
@@ -22,3 +22,5 @@
 - 用 `GSY_CancelServerP2PSession` 取消仍在等待的会话。等待超时通过 server 的 `on_error(EC_Timeout, server)` 报告。会话认证成功后即被消费，需重新协商才能建立另一条连接。超时或取消释放会话的使用权，仍有效的会话可重试或用 `GSY_ReleaseP2PSession` 释放。
 - 用 `GSY_ReqDisconnectPeerDatagram` 结束业务 stream，或用 `GSY_disconnect` 关闭单个连接。用 `GSY_stop_server` 关闭该 server 的连接和待处理会话。server 和 lobby 各自持有 socket 引用。
 - 原有 `GSY_StartP2PPeer` 可继续用于独立 peer 流程。基础 server 的接收端应与 `GSY_connect_session` 配对。双方必须使用支持 stream 标识的新协议版本。
+
+Datagram 的前 4 字节为网络字节序的发送方 `GSY_P2PStreamId`。接收方只向已接受此 channel 的对应 stream 分发，业务回调收到的 payload 不包含报文头。新格式需要双方同步升级。QUIC datagram 不保证投递顺序，关闭并重新打开同一 channel 后，延迟到达的旧报文仍可能被接收。

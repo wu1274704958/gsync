@@ -28,14 +28,16 @@ PCON=C.CFUNCTYPE(None,S,U,P); PSTR=C.CFUNCTYPE(None,S,U,S,P); PTERM=C.CFUNCTYPE(
 class PeerCtx(C.Structure): _fields_=[('connected',PCON),('stream',PSTR),('failed',PTERM),('closed',PTERM),('user',P)]
 DCON=C.CFUNCTYPE(None,I,S,U,C.c_char_p,U); DRECV=C.CFUNCTYPE(None,P,C.c_size_t,S,U,U); DFAIL=C.CFUNCTYPE(None,I,S,U,U)
 DEND=C.CFUNCTYPE(None,I,S,U,C.c_char_p); DERROR=C.CFUNCTYPE(None,U,S,I,C.c_char_p,U)
-class DCtx(C.Structure): _fields_=[('connected',DCON),('recv',DRECV),('disconnected',DEND),('failed',DFAIL),('error',DERROR),('self_id',U),('token',P),('token_len',I),('relay',I),('server',I),('extend',P),('check',C.c_uint8),('rejected',P)]
+class DCtx(C.Structure): _fields_=[('connected',DCON),('recv',DRECV),('disconnected',DEND),('failed',DFAIL),('error',DERROR),('self_id',U),('token',P),('token_len',I),('relay',I),('server',I),('extend',P),('check',C.c_uint8),('rejected',P),('channel_request',P),('channel_result',P)]
+CHANNEL_RESULT=C.CFUNCTYPE(None,S,I,I,U,C.c_char_p)
+CHANNEL_REQUEST=C.CFUNCTYPE(I,U,S,U,C.POINTER(P))
 CREATED=C.CFUNCTYPE(None,I,S,U,P)
 ACCEPT=C.CFUNCTYPE(P,U,U); DISCONNECT=C.CFUNCTYPE(None,U,U)
 POLICY=C.CFUNCTYPE(I,U,U,S,U,C.POINTER(U),C.POINTER(P))
 REJECTED=C.CFUNCTYPE(None,S,C.c_char_p,U)
 class ServerCtx(C.Structure): _fields_=[('started',IO),('stopped',IO),('error',IO),('accept',ACCEPT),('disconnect',DISCONNECT),('extra',P),('policy',POLICY),('socket',S),('mode',I)]
 class LC(C.Structure): _fields_=[('reg',REG),('unreg',P),('respond',P),('list',P),('request',P),('error',P),('change',P),('attempt',P),('quit',P),('extend',P),('check',C.c_uint8)]
-refs=[]; connected={}; registered={}; incoming={}; errors={}; results={}; peerconn={}; peerstreams={}; datagram={}; received=[]; deliveries=[]; stream_creation={}; peerc=[]; dc=[]
+refs=[]; connected={}; registered={}; incoming={}; errors={}; results={}; peerconn={}; peerstreams={}; datagram={}; received=[]; deliveries=[]; stream_creation={}; channel_results={}; channel_requests=[]; rejected_channel_ids=set(); channel_reason=C.create_string_buffer(b"channel denied"); peerc=[]; dc=[]
 @ERR
 def err(msg,code): print('error',code,flush=True)
 @IO
@@ -64,6 +66,17 @@ def pstream(h,conn,sid,user):
 def pterm(h,code,user): print('peer terminal',int(user),code,flush=True)
 @DCON
 def dconnected(code,sid,peer,name,rid): datagram[sid]=(code,peer)
+@CHANNEL_RESULT
+def channel_result(sid,opening,code,rid,reason):
+ channel_results[rid]=(sid,opening,code,reason)
+@CHANNEL_REQUEST
+def channel_request(conn,sid,peer_id,reason):
+ channel_requests.append((sid,peer_id))
+ if peer_id==102 and peer_id not in rejected_channel_ids:
+  rejected_channel_ids.add(peer_id)
+  reason[0]=C.addressof(channel_reason)
+  return 0
+ return 1
 @DRECV
 def dreceived(ptr,size,sid,peer,conn):
  payload=C.string_at(ptr,size)
@@ -79,7 +92,7 @@ def derror(conn,sid,code,msg,rid): print('datagram error',code,flush=True)
 def created(code,sid,rid,user):
  stream_creation[rid]=(code,sid)
  if sid: peerstreams[sid]=int(user)
-refs.extend([err,con,dis,failure,stream,reg,request,helper,pconnected,pstream,pterm,dconnected,dreceived,dend,dfail,derror,created]); gc=GC(err); contexts=[CC(con,dis,failure,stream,stream,None),CC(con,dis,failure,stream,stream,None)]; lc=[LC() for x in range(2)]
+refs.extend([err,con,dis,failure,stream,reg,request,helper,pconnected,pstream,pterm,dconnected,dreceived,dend,dfail,derror,created,channel_result,channel_request]); gc=GC(err); contexts=[CC(con,dis,failure,stream,stream,None),CC(con,dis,failure,stream,stream,None)]; lc=[LC() for x in range(2)]
 for c in lc: c.reg=reg; c.request=C.cast(request,P); c.quit=C.cast(helper,P)
 d.GSY_initialize.argtypes=[I,C.POINTER(GC)];d.GSY_connect.argtypes=[U,C.c_char_p,C.c_char_p,C.c_short,C.POINTER(CC)];d.GSY_connect.restype=U
 d.GSY_RegisterToLobby.argtypes=[U,C.c_char_p,C.c_char_p,C.POINTER(LC)];d.GSY_RegisterToLobby.restype=S
@@ -116,12 +129,13 @@ try:
  d.GSY_StartP2PPeer.argtypes=[C.c_char_p,U,C.POINTER(Result),C.POINTER(PeerCtx),C.POINTER(S)]
  d.GSY_StartP2PPeer.restype=I; d.GSY_ConnectPeerDatagram.argtypes=[U,U,U,C.POINTER(DCtx),U,CREATED,P]
  d.GSY_ServerConnectPeerDatagram.argtypes=[U,S,C.POINTER(DCtx),U]
+ d.GSY_OpenDatagramChannel.argtypes=[U,S,U]; d.GSY_CloseDatagramChannel.argtypes=[U,S,U]
  d.GSY_SendDatagram.argtypes=[U,S,C.c_char_p,C.c_size_t,U]; d.GSY_CloseP2PPeer.argtypes=[S]
  peer_handles=[S(),S()]
  cfg=os.fsencode(peer_config)
  client=next(i for i in range(2) if not results[sids[i]].server); server=1-client
  for i in range(2):
-  data=DCtx(dconnected,dreceived,dend,dfail,derror,registered[sids[i]][1],None,0,0,results[sids[i]].server,None,0,None); dc.append(data)
+  data=DCtx(dconnected,dreceived,dend,dfail,derror,registered[sids[i]][1],None,0,0,results[sids[i]].server,None,0,None,C.cast(channel_request,P),C.cast(channel_result,P)); dc.append(data)
  if basic_server:
   started=[]; stopped=[]; rejected=[]; decisions=[]; server_connections=[]; active_connections=[]
   first_results=dict(results)
@@ -244,6 +258,17 @@ try:
    assert d.GSY_GetPeerStreamIds(peerconn[idx+1],sid,C.byref(local),C.byref(remote))==0
    assert (local.value,remote.value)==(local_id,remote_id)
   assert decisions==[99,101]
+  assert d.GSY_SendDatagram(peerconn[server+1],server_sid,b'no',2,5)==1012
+  assert d.GSY_OpenDatagramChannel(peerconn[server+1],server_sid,206)==2
+  for _ in range(400):
+   if 206 in channel_results: break
+   time.sleep(.01)
+  assert channel_results[206][2]==0, channel_results
+  assert d.GSY_SendDatagram(peerconn[server+1],server_sid,b'reverse',7,6)==2
+  for _ in range(400):
+   if b'reverse' in received: break
+   time.sleep(.01)
+  assert [(sid,payload) for sid,payload in deliveries if payload==b'reverse']==[(client_sid,b'reverse')]
   assert d.GSY_ConnectPeerDatagram(peerconn[client+1],0,0,C.byref(dc[client]),100,created,client+1)==-1
   assert d.GSY_ConnectPeerDatagram(peerconn[client+1],0,101,C.byref(dc[client]),102,created,client+1)==2
   assert d.GSY_ConnectPeerDatagram(peerconn[client+1],0,102,C.byref(dc[client]),103,created,client+1)==2
@@ -255,11 +280,39 @@ try:
   other_client_sid=S(); other_server_sid=S()
   assert d.GSY_FindPeerStream(peerconn[client+1],202,C.byref(other_client_sid))==0
   assert d.GSY_FindPeerStream(peerconn[server+1],102,C.byref(other_server_sid))==0
+  assert d.GSY_SendDatagram(peerconn[client+1],other_client_sid,b'blocked',7,6)==1012
+  assert d.GSY_OpenDatagramChannel(peerconn[client+1],other_client_sid,200)==2
+  for _ in range(400):
+   if 200 in channel_results: break
+   time.sleep(.01)
+  assert channel_results[200][2:]==(-1,b"channel denied"), channel_results
+  assert d.GSY_OpenDatagramChannel(peerconn[client+1],other_client_sid,201)==2
+  for _ in range(400):
+   if 201 in channel_results: break
+   time.sleep(.01)
+  assert channel_results[201][2]==0, channel_results
+  assert d.GSY_OpenDatagramChannel(peerconn[client+1],other_client_sid,202)==1012
   assert d.GSY_SendDatagram(peerconn[client+1],other_client_sid,b'other',5,6)==2
   for _ in range(400):
    if b'other' in received: break
    time.sleep(.01)
   assert [(sid,payload) for sid,payload in deliveries if payload==b'other']==[(other_server_sid.value,b'other')]
+ assert d.GSY_OpenDatagramChannel(peerconn[client+1],client_sid,203)==2
+ for _ in range(400):
+  if 203 in channel_results: break
+  time.sleep(.01)
+ assert channel_results[203][2]==0, channel_results
+ assert d.GSY_CloseDatagramChannel(peerconn[client+1],client_sid,204)==2
+ for _ in range(400):
+  if 204 in channel_results: break
+  time.sleep(.01)
+ assert channel_results[204][2]==0, channel_results
+ assert d.GSY_SendDatagram(peerconn[client+1],client_sid,b'closed',6,5)==1012
+ assert d.GSY_OpenDatagramChannel(peerconn[client+1],client_sid,205)==2
+ for _ in range(400):
+  if 205 in channel_results: break
+  time.sleep(.01)
+ assert channel_results[205][2]==0, channel_results
  assert d.GSY_SendDatagram(peerconn[client+1],client_sid,b'hello',5,5)==2
  for _ in range(500):
   if b'hello' in received: break

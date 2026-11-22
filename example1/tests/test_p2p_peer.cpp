@@ -144,7 +144,11 @@ int main(int argc, char** argv) {
             local != 101 || remote != 101 ||
             GSY_FindPeerStream(peer_connection, remote, &found) != EC_Ok || found != sid) failed = true;
         std::printf("datagram connected sid=%llu\n", (unsigned long long)sid);
-        if (!server_role) GSY_SendDatagram(peer_connection, sid, "ping", 4, NONE_RID);
+        if (GSY_OpenDatagramChannel(peer_connection, sid, 100) != EC_Pending) failed = true;
+    };
+    datagram.on_channel_result = [](GSY_StreamId sid, int opening, ErrorCode code, GSY_RequestId, const char*) {
+        if (code != EC_Ok) { failed = true; return; }
+        if (opening && !server_role) GSY_SendDatagram(peer_connection, sid, "ping", 4, NONE_RID);
     };
     datagram.on_datagram_received = [](const uint8_t* data, size_t size, GSY_StreamId sid,
                                        GSY_PeerId peer, GSY_ConnectionHwnd conn) {

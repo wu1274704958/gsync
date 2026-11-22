@@ -79,9 +79,39 @@ struct ReqConnectDatagramDefaultTypeInternal {
 
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 ReqConnectDatagramDefaultTypeInternal _ReqConnectDatagram_default_instance_;
+
+inline constexpr ChannelControl::Impl_::Impl_(
+    ::_pbi::ConstantInitialized) noexcept
+      : _cached_size_{0},
+        reason_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
+        action_{static_cast< ::gsync::ChannelControl_Action >(0)},
+        request_id_{0u},
+        accepted_{false} {}
+
+template <typename>
+PROTOBUF_CONSTEXPR ChannelControl::ChannelControl(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(ChannelControl_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(::_pbi::ConstantInitialized()) {
+}
+struct ChannelControlDefaultTypeInternal {
+  PROTOBUF_CONSTEXPR ChannelControlDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~ChannelControlDefaultTypeInternal() {}
+  union {
+    ChannelControl _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 ChannelControlDefaultTypeInternal _ChannelControl_default_instance_;
 }  // namespace gsync
-static constexpr const ::_pb::EnumDescriptor *PROTOBUF_NONNULL *PROTOBUF_NULLABLE
-    file_level_enum_descriptors_p2p_5fdatagram_2eproto = nullptr;
+static const ::_pb::EnumDescriptor* PROTOBUF_NONNULL
+    file_level_enum_descriptors_p2p_5fdatagram_2eproto[1];
 static constexpr const ::_pb::ServiceDescriptor *PROTOBUF_NONNULL *PROTOBUF_NULLABLE
     file_level_service_descriptors_p2p_5fdatagram_2eproto = nullptr;
 const ::uint32_t
@@ -107,34 +137,57 @@ const ::uint32_t
         ~0u,  // no sizeof(Split)
         PROTOBUF_FIELD_OFFSET(::gsync::RespondConnectDatagram, _impl_.name_),
         0,
+        PROTOBUF_FIELD_OFFSET(::gsync::ChannelControl, _impl_._has_bits_),
+        PROTOBUF_FIELD_OFFSET(::gsync::ChannelControl, _internal_metadata_),
+        ~0u,  // no _extensions_
+        ~0u,  // no _oneof_case_
+        ~0u,  // no _weak_field_map_
+        ~0u,  // no _inlined_string_donated_
+        ~0u,  // no _split_
+        ~0u,  // no sizeof(Split)
+        PROTOBUF_FIELD_OFFSET(::gsync::ChannelControl, _impl_.action_),
+        PROTOBUF_FIELD_OFFSET(::gsync::ChannelControl, _impl_.request_id_),
+        PROTOBUF_FIELD_OFFSET(::gsync::ChannelControl, _impl_.accepted_),
+        PROTOBUF_FIELD_OFFSET(::gsync::ChannelControl, _impl_.reason_),
+        1,
+        2,
+        3,
+        0,
 };
 
 static const ::_pbi::MigrationSchema
     schemas[] ABSL_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
         {0, 9, -1, sizeof(::gsync::ReqConnectDatagram)},
         {10, 19, -1, sizeof(::gsync::RespondConnectDatagram)},
+        {20, 32, -1, sizeof(::gsync::ChannelControl)},
 };
 static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::gsync::_ReqConnectDatagram_default_instance_._instance,
     &::gsync::_RespondConnectDatagram_default_instance_._instance,
+    &::gsync::_ChannelControl_default_instance_._instance,
 };
 const char descriptor_table_protodef_p2p_5fdatagram_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\022p2p_datagram.proto\022\005gsync\"\"\n\022ReqConnec"
     "tDatagram\022\014\n\004name\030\001 \001(\t\"&\n\026RespondConnec"
-    "tDatagram\022\014\n\004name\030\001 \001(\tb\006proto3"
+    "tDatagram\022\014\n\004name\030\001 \001(\t\"\300\001\n\016ChannelContr"
+    "ol\0221\n\006action\030\001 \001(\0162\034.gsync.ChannelContro"
+    "l.ActionH\000\210\001\001\022\022\n\nrequest_id\030\002 \001(\r\022\020\n\010acc"
+    "epted\030\003 \001(\010\022\016\n\006reason\030\004 \001(\t\":\n\006Action\022\010\n"
+    "\004OPEN\020\000\022\t\n\005CLOSE\020\001\022\014\n\010OPEN_ACK\020\002\022\r\n\tCLOS"
+    "E_ACK\020\003B\t\n\007_actionb\006proto3"
 };
 static ::absl::once_flag descriptor_table_p2p_5fdatagram_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_p2p_5fdatagram_2eproto = {
     false,
     false,
-    111,
+    306,
     descriptor_table_protodef_p2p_5fdatagram_2eproto,
     "p2p_datagram.proto",
     &descriptor_table_p2p_5fdatagram_2eproto_once,
     nullptr,
     0,
-    2,
+    3,
     schemas,
     file_default_instances,
     TableStruct_p2p_5fdatagram_2eproto::offsets,
@@ -142,6 +195,12 @@ PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_p2p_5fdatagram
     file_level_service_descriptors_p2p_5fdatagram_2eproto,
 };
 namespace gsync {
+const ::google::protobuf::EnumDescriptor* PROTOBUF_NONNULL ChannelControl_Action_descriptor() {
+  ::google::protobuf::internal::AssignDescriptors(&descriptor_table_p2p_5fdatagram_2eproto);
+  return file_level_enum_descriptors_p2p_5fdatagram_2eproto[0];
+}
+PROTOBUF_CONSTINIT const uint32_t ChannelControl_Action_internal_data_[] = {
+    262144u, 0u, };
 // ===================================================================
 
 class ReqConnectDatagram::_Internal {
@@ -662,6 +721,369 @@ void RespondConnectDatagram::InternalSwap(RespondConnectDatagram* PROTOBUF_RESTR
 }
 
 ::google::protobuf::Metadata RespondConnectDatagram::GetMetadata() const {
+  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
+}
+// ===================================================================
+
+class ChannelControl::_Internal {
+ public:
+  using HasBits =
+      decltype(std::declval<ChannelControl>()._impl_._has_bits_);
+  static constexpr ::int32_t kHasBitsOffset =
+      8 * PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_._has_bits_);
+};
+
+ChannelControl::ChannelControl(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, ChannelControl_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  SharedCtor(arena);
+  // @@protoc_insertion_point(arena_constructor:gsync.ChannelControl)
+}
+PROTOBUF_NDEBUG_INLINE ChannelControl::Impl_::Impl_(
+    ::google::protobuf::internal::InternalVisibility visibility,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+    const ::gsync::ChannelControl& from_msg)
+      : _has_bits_{from._has_bits_},
+        _cached_size_{0},
+        reason_(arena, from.reason_) {}
+
+ChannelControl::ChannelControl(
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
+    const ChannelControl& from)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, ChannelControl_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  ChannelControl* const _this = this;
+  (void)_this;
+  _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+  new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
+  ::memcpy(reinterpret_cast<char *>(&_impl_) +
+               offsetof(Impl_, action_),
+           reinterpret_cast<const char *>(&from._impl_) +
+               offsetof(Impl_, action_),
+           offsetof(Impl_, accepted_) -
+               offsetof(Impl_, action_) +
+               sizeof(Impl_::accepted_));
+
+  // @@protoc_insertion_point(copy_constructor:gsync.ChannelControl)
+}
+PROTOBUF_NDEBUG_INLINE ChannelControl::Impl_::Impl_(
+    ::google::protobuf::internal::InternalVisibility visibility,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+      : _cached_size_{0},
+        reason_(arena) {}
+
+inline void ChannelControl::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
+  new (&_impl_) Impl_(internal_visibility(), arena);
+  ::memset(reinterpret_cast<char *>(&_impl_) +
+               offsetof(Impl_, action_),
+           0,
+           offsetof(Impl_, accepted_) -
+               offsetof(Impl_, action_) +
+               sizeof(Impl_::accepted_));
+}
+ChannelControl::~ChannelControl() {
+  // @@protoc_insertion_point(destructor:gsync.ChannelControl)
+  SharedDtor(*this);
+}
+inline void ChannelControl::SharedDtor(MessageLite& self) {
+  ChannelControl& this_ = static_cast<ChannelControl&>(self);
+  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
+  ABSL_DCHECK(this_.GetArena() == nullptr);
+  this_._impl_.reason_.Destroy();
+  this_._impl_.~Impl_();
+}
+
+inline void* PROTOBUF_NONNULL ChannelControl::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) ChannelControl(arena);
+}
+constexpr auto ChannelControl::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(ChannelControl),
+                                            alignof(ChannelControl));
+}
+constexpr auto ChannelControl::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_ChannelControl_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // OnDemandRegisterArenaDtor
+          nullptr,  // IsInitialized
+          &ChannelControl::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<ChannelControl>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &ChannelControl::SharedDtor,
+          ::google::protobuf::Message::GetClearImpl<ChannelControl>(), &ChannelControl::ByteSizeLong,
+              &ChannelControl::_InternalSerialize,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_._cached_size_),
+          false,
+      },
+      &ChannelControl::kDescriptorMethods,
+      &descriptor_table_p2p_5fdatagram_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull ChannelControl_class_data_ =
+        ChannelControl::InternalGenerateClassData_();
+
+const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL ChannelControl::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&ChannelControl_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(ChannelControl_class_data_.tc_table);
+  return ChannelControl_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<2, 4, 0, 35, 2>
+ChannelControl::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_._has_bits_),
+    0, // no _extensions_
+    4, 24,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967280,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    4,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    ChannelControl_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::GenericFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::gsync::ChannelControl>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    // string reason = 4;
+    {::_pbi::TcParser::FastUS1,
+     {34, 0, 0, PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_.reason_)}},
+    // optional .gsync.ChannelControl.Action action = 1;
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(ChannelControl, _impl_.action_), 1>(),
+     {8, 1, 0, PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_.action_)}},
+    // uint32 request_id = 2;
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(ChannelControl, _impl_.request_id_), 2>(),
+     {16, 2, 0, PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_.request_id_)}},
+    // bool accepted = 3;
+    {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(ChannelControl, _impl_.accepted_), 3>(),
+     {24, 3, 0, PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_.accepted_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // optional .gsync.ChannelControl.Action action = 1;
+    {PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_.action_), _Internal::kHasBitsOffset + 1, 0,
+    (0 | ::_fl::kFcOptional | ::_fl::kOpenEnum)},
+    // uint32 request_id = 2;
+    {PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_.request_id_), _Internal::kHasBitsOffset + 2, 0,
+    (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
+    // bool accepted = 3;
+    {PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_.accepted_), _Internal::kHasBitsOffset + 3, 0,
+    (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+    // string reason = 4;
+    {PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_.reason_), _Internal::kHasBitsOffset + 0, 0,
+    (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+  }},
+  // no aux_entries
+  {{
+    "\24\0\0\0\6\0\0\0"
+    "gsync.ChannelControl"
+    "reason"
+  }},
+};
+PROTOBUF_NOINLINE void ChannelControl::Clear() {
+// @@protoc_insertion_point(message_clear_start:gsync.ChannelControl)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  cached_has_bits = _impl_._has_bits_[0];
+  if ((cached_has_bits & 0x00000001u) != 0) {
+    _impl_.reason_.ClearNonDefaultToEmpty();
+  }
+  if ((cached_has_bits & 0x0000000eu) != 0) {
+    ::memset(&_impl_.action_, 0, static_cast<::size_t>(
+        reinterpret_cast<char*>(&_impl_.accepted_) -
+        reinterpret_cast<char*>(&_impl_.action_)) + sizeof(_impl_.accepted_));
+  }
+  _impl_._has_bits_.Clear();
+  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::uint8_t* PROTOBUF_NONNULL ChannelControl::_InternalSerialize(
+    const ::google::protobuf::MessageLite& base, ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) {
+  const ChannelControl& this_ = static_cast<const ChannelControl&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::uint8_t* PROTOBUF_NONNULL ChannelControl::_InternalSerialize(
+    ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+  const ChannelControl& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  // @@protoc_insertion_point(serialize_to_array_start:gsync.ChannelControl)
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = this_._impl_._has_bits_[0];
+  // optional .gsync.ChannelControl.Action action = 1;
+  if ((cached_has_bits & 0x00000002u) != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteEnumToArray(
+        1, this_._internal_action(), target);
+  }
+
+  // uint32 request_id = 2;
+  if ((cached_has_bits & 0x00000004u) != 0) {
+    if (this_._internal_request_id() != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
+          2, this_._internal_request_id(), target);
+    }
+  }
+
+  // bool accepted = 3;
+  if ((cached_has_bits & 0x00000008u) != 0) {
+    if (this_._internal_accepted() != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteBoolToArray(
+          3, this_._internal_accepted(), target);
+    }
+  }
+
+  // string reason = 4;
+  if ((cached_has_bits & 0x00000001u) != 0) {
+    if (!this_._internal_reason().empty()) {
+      const std::string& _s = this_._internal_reason();
+      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "gsync.ChannelControl.reason");
+      target = stream->WriteStringMaybeAliased(4, _s, target);
+    }
+  }
+
+  if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
+    target =
+        ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
+            this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:gsync.ChannelControl)
+  return target;
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::size_t ChannelControl::ByteSizeLong(const MessageLite& base) {
+  const ChannelControl& this_ = static_cast<const ChannelControl&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::size_t ChannelControl::ByteSizeLong() const {
+  const ChannelControl& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  // @@protoc_insertion_point(message_byte_size_start:gsync.ChannelControl)
+  ::size_t total_size = 0;
+
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void)cached_has_bits;
+
+  ::_pbi::Prefetch5LinesFrom7Lines(&this_);
+  cached_has_bits = this_._impl_._has_bits_[0];
+  if ((cached_has_bits & 0x0000000fu) != 0) {
+    // string reason = 4;
+    if ((cached_has_bits & 0x00000001u) != 0) {
+      if (!this_._internal_reason().empty()) {
+        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
+                                        this_._internal_reason());
+      }
+    }
+    // optional .gsync.ChannelControl.Action action = 1;
+    if ((cached_has_bits & 0x00000002u) != 0) {
+      total_size += 1 +
+                    ::_pbi::WireFormatLite::EnumSize(this_._internal_action());
+    }
+    // uint32 request_id = 2;
+    if ((cached_has_bits & 0x00000004u) != 0) {
+      if (this_._internal_request_id() != 0) {
+        total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
+            this_._internal_request_id());
+      }
+    }
+    // bool accepted = 3;
+    if ((cached_has_bits & 0x00000008u) != 0) {
+      if (this_._internal_accepted() != 0) {
+        total_size += 2;
+      }
+    }
+  }
+  return this_.MaybeComputeUnknownFieldsSize(total_size,
+                                             &this_._impl_._cached_size_);
+}
+
+void ChannelControl::MergeImpl(::google::protobuf::MessageLite& to_msg, const ::google::protobuf::MessageLite& from_msg) {
+  auto* const _this = static_cast<ChannelControl*>(&to_msg);
+  auto& from = static_cast<const ChannelControl&>(from_msg);
+  // @@protoc_insertion_point(class_specific_merge_from_start:gsync.ChannelControl)
+  ABSL_DCHECK_NE(&from, _this);
+  ::uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  cached_has_bits = from._impl_._has_bits_[0];
+  if ((cached_has_bits & 0x0000000fu) != 0) {
+    if ((cached_has_bits & 0x00000001u) != 0) {
+      if (!from._internal_reason().empty()) {
+        _this->_internal_set_reason(from._internal_reason());
+      } else {
+        if (_this->_impl_.reason_.IsDefault()) {
+          _this->_internal_set_reason("");
+        }
+      }
+    }
+    if ((cached_has_bits & 0x00000002u) != 0) {
+      _this->_impl_.action_ = from._impl_.action_;
+    }
+    if ((cached_has_bits & 0x00000004u) != 0) {
+      if (from._internal_request_id() != 0) {
+        _this->_impl_.request_id_ = from._impl_.request_id_;
+      }
+    }
+    if ((cached_has_bits & 0x00000008u) != 0) {
+      if (from._internal_accepted() != 0) {
+        _this->_impl_.accepted_ = from._impl_.accepted_;
+      }
+    }
+  }
+  _this->_impl_._has_bits_[0] |= cached_has_bits;
+  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(from._internal_metadata_);
+}
+
+void ChannelControl::CopyFrom(const ChannelControl& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:gsync.ChannelControl)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+
+void ChannelControl::InternalSwap(ChannelControl* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
+  using std::swap;
+  auto* arena = GetArena();
+  ABSL_DCHECK_EQ(arena, other->GetArena());
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.reason_, &other->_impl_.reason_, arena);
+  ::google::protobuf::internal::memswap<
+      PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_.accepted_)
+      + sizeof(ChannelControl::_impl_.accepted_)
+      - PROTOBUF_FIELD_OFFSET(ChannelControl, _impl_.action_)>(
+          reinterpret_cast<char*>(&_impl_.action_),
+          reinterpret_cast<char*>(&other->_impl_.action_));
+}
+
+::google::protobuf::Metadata ChannelControl::GetMetadata() const {
   return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
 }
 // @@protoc_insertion_point(namespace_scope)

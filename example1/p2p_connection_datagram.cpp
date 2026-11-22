@@ -4,6 +4,7 @@
 #include "../src/common.h"
 #include "mqas/tools/stream/MsgDef.h"
 #include <easylogging++.h>
+#include <limits>
 
 using P2PDatagramStreamVariant = mqas::core::StreamVariant<P2PDatagramStreamPair>;
 using P2PDatagramConnect       = mqas::core::Connect<P2PDatagramStreamVariant>;
@@ -22,6 +23,17 @@ static void connect_datagram_signals(
     GSY_StreamId stream_id,
     GSY_RequestId request_id)
 {
+    ds->on_channel_request = [ctx, handle, stream_id](uint32_t peer_stream_id, std::string& reason) {
+        if (!ctx->on_channel_request) return true;
+        const char* text = nullptr;
+        const bool accepted = ctx->on_channel_request(handle, stream_id, peer_stream_id, &text) != 0;
+        if (text) reason = text;
+        return accepted;
+    };
+    ds->on_channel_result.connect([ctx, stream_id](bool open, bool accepted, uint32_t request, const std::string& reason) {
+        if (ctx->on_channel_result)
+            ctx->on_channel_result(stream_id, open ? 1 : 0, accepted ? EC_Ok : EC_Fail, request, reason.c_str());
+    });
     ds->on_rejected_signal.connect([ctx, stream_id, request_id](const std::string& reason) {
         if (ctx->on_stream_rejected) ctx->on_stream_rejected(stream_id, reason.c_str(), request_id);
     });
@@ -121,27 +133,55 @@ ErrorCode GSY_SendDatagram(GSY_ConnectionHwnd handle, GSY_StreamId sid,
 {
     if (!is_datagram_handle(handle)) return EC_EngineNotMatch;
     if (!data || !size) return EC_Fail;
+    if (size > static_cast<size_t>(std::numeric_limits<short>::max()) - sizeof(uint32_t)) return EC_Fail;
     CHECK_CONNECT_VALID(handle)
-    push_task([conn, sid,
-               data_vec = std::vector<uint8_t>(reinterpret_cast<const uint8_t*>(data),
-                                               reinterpret_cast<const uint8_t*>(data) + size)]()
-    {
+    auto data_vec = std::vector<uint8_t>(reinterpret_cast<const uint8_t*>(data),
+                                         reinterpret_cast<const uint8_t*>(data) + size);
+    return push_task_with_result<ErrorCode>([conn, sid, data_vec = std::move(data_vec)]() mutable {
         const auto p2p_conn = std::static_pointer_cast<P2PDatagramConnect>(conn);
         const auto sv = p2p_conn->get_stream(reinterpret_cast<::lsquic_stream_t*>(sid));
-        if (!sv)
-        {
-            LOG(WARNING) << "GSY_SendDatagram: stream not found sid=" << sid;
-            return;
-        }
+        if (!sv) return EC_InvalidStream;
         const auto ds = sv->get_holds_stream<P2PDatagramStream>();
-        if (!ds)
-        {
-            LOG(WARNING) << "GSY_SendDatagram: P2PDatagramStream not ready sid=" << sid;
-            return;
-        }
-        ds->send_datagram(const_cast<uint8_t*>(data_vec.data()), data_vec.size());
+        if (!ds || !ds->can_send_datagram()) return EC_WrongStreamState;
+        return ds->send_datagram(data_vec.data(), data_vec.size()) ? EC_Pending : EC_Fail;
     });
-    return EC_Pending;
+}
+
+static ErrorCode request_datagram_channel(GSY_ConnectionHwnd handle, GSY_StreamId sid,
+                                           GSY_RequestId request_id, bool open)
+{
+    if (!is_datagram_handle(handle)) return EC_EngineNotMatch;
+    std::shared_ptr<mqas::core::IConnect> conn;
+    {
+        std::lock_guard lock(connect_mutex);
+        const auto it = connect_map.find(handle);
+        if (it != connect_map.end()) conn = it->second.lock();
+    }
+    if (!conn) return EC_InvalidHandler;
+    return push_task_with_result<ErrorCode>([conn, sid, request_id, open] {
+        const auto stream = std::static_pointer_cast<P2PDatagramConnect>(conn)->get_stream(
+            reinterpret_cast<::lsquic_stream_t*>(sid));
+        if (!stream) return EC_InvalidStream;
+        const auto ds = stream->get_holds_stream<P2PDatagramStream>();
+        if (!ds) return EC_WrongStreamState;
+        if (!ds->begin_channel_request(open, request_id)) return EC_WrongStreamState;
+        std::weak_ptr<P2PDatagramStream> weak = ds;
+        push_task([weak, request_id, open] {
+            const auto ds = weak.lock();
+            if (ds) ds->dispatch_channel_request(open, request_id);
+        }, true);
+        return EC_Pending;
+    });
+}
+
+ErrorCode GSY_OpenDatagramChannel(GSY_ConnectionHwnd handle, GSY_StreamId sid, GSY_RequestId request_id)
+{
+    return request_datagram_channel(handle, sid, request_id, true);
+}
+
+ErrorCode GSY_CloseDatagramChannel(GSY_ConnectionHwnd handle, GSY_StreamId sid, GSY_RequestId request_id)
+{
+    return request_datagram_channel(handle, sid, request_id, false);
 }
 
 // ── GSY_ReqDisconnectPeerDatagram ─────────────────────────────────────────────

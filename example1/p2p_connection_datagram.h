@@ -24,6 +24,10 @@ typedef struct GSYNC_EXTERN GSY_P2PDatagramConnectionContext
     uint8_t _check_code; // do not modify
     // Optional rejection detail; reason is valid only during the callback.
     void (*on_stream_rejected)(GSY_StreamId, const char* reason, GSY_RequestId);
+    /* Return nonzero to accept; reason must remain valid after the callback returns. */
+    int (*on_channel_request)(GSY_ConnectionHwnd, GSY_StreamId, GSY_P2PStreamId, const char** reason);
+    /* opening is nonzero for open, zero for close. reason is valid during the callback. */
+    void (*on_channel_result)(GSY_StreamId, int opening, ErrorCode, GSY_RequestId, const char* reason);
 } GSY_P2PDatagramConnectionContext;
 
 // Completion runs on the SDK I/O thread, possibly before this function returns.
@@ -36,6 +40,8 @@ ErrorCode GSYNC_EXTERN GSY_FindPeerStream(GSY_ConnectionHwnd, GSY_P2PStreamId pe
 ErrorCode GSYNC_EXTERN GSY_GetPeerStreamIds(GSY_ConnectionHwnd, GSY_StreamId,
     GSY_P2PStreamId* local_stream_id, GSY_P2PStreamId* peer_stream_id);
 ErrorCode GSYNC_EXTERN GSY_SendDatagram(GSY_ConnectionHwnd handle,GSY_StreamId sid,const char* data,size_t size,GSY_RequestId request_id);
+ErrorCode GSYNC_EXTERN GSY_OpenDatagramChannel(GSY_ConnectionHwnd, GSY_StreamId, GSY_RequestId);
+ErrorCode GSYNC_EXTERN GSY_CloseDatagramChannel(GSY_ConnectionHwnd, GSY_StreamId, GSY_RequestId);
 ErrorCode GSYNC_EXTERN GSY_ReqDisconnectPeerDatagram(GSY_ConnectionHwnd handle,GSY_StreamId sid,const char* reason,GSY_RequestId request_id);
 
 ErrorCode GSYNC_EXTERN GSY_ServerConnectPeerDatagram(GSY_ConnectionHwnd handle,GSY_StreamId stream_id,GSY_P2PDatagramConnectionContext* context,GSY_RequestId request_id);

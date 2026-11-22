@@ -28,6 +28,7 @@
 #include "google/protobuf/message_lite.h"
 #include "google/protobuf/repeated_field.h"  // IWYU pragma: export
 #include "google/protobuf/extension_set.h"  // IWYU pragma: export
+#include "google/protobuf/generated_enum_reflection.h"
 #include "google/protobuf/unknown_field_set.h"
 // @@protoc_insertion_point(includes)
 
@@ -53,6 +54,12 @@ extern "C" {
 extern const ::google::protobuf::internal::DescriptorTable descriptor_table_p2p_5fdatagram_2eproto;
 }  // extern "C"
 namespace gsync {
+enum ChannelControl_Action : int;
+extern const uint32_t ChannelControl_Action_internal_data_[];
+class ChannelControl;
+struct ChannelControlDefaultTypeInternal;
+extern ChannelControlDefaultTypeInternal _ChannelControl_default_instance_;
+extern const ::google::protobuf::internal::ClassDataFull ChannelControl_class_data_;
 class ReqConnectDatagram;
 struct ReqConnectDatagramDefaultTypeInternal;
 extern ReqConnectDatagramDefaultTypeInternal _ReqConnectDatagram_default_instance_;
@@ -64,10 +71,51 @@ extern const ::google::protobuf::internal::ClassDataFull RespondConnectDatagram_
 }  // namespace gsync
 namespace google {
 namespace protobuf {
+template <>
+internal::EnumTraitsT<::gsync::ChannelControl_Action_internal_data_>
+    internal::EnumTraitsImpl::value<::gsync::ChannelControl_Action>;
 }  // namespace protobuf
 }  // namespace google
 
 namespace gsync {
+enum ChannelControl_Action : int {
+  ChannelControl_Action_OPEN = 0,
+  ChannelControl_Action_CLOSE = 1,
+  ChannelControl_Action_OPEN_ACK = 2,
+  ChannelControl_Action_CLOSE_ACK = 3,
+  ChannelControl_Action_ChannelControl_Action_INT_MIN_SENTINEL_DO_NOT_USE_ =
+      std::numeric_limits<::int32_t>::min(),
+  ChannelControl_Action_ChannelControl_Action_INT_MAX_SENTINEL_DO_NOT_USE_ =
+      std::numeric_limits<::int32_t>::max(),
+};
+
+extern const uint32_t ChannelControl_Action_internal_data_[];
+inline constexpr ChannelControl_Action ChannelControl_Action_Action_MIN =
+    static_cast<ChannelControl_Action>(0);
+inline constexpr ChannelControl_Action ChannelControl_Action_Action_MAX =
+    static_cast<ChannelControl_Action>(3);
+inline bool ChannelControl_Action_IsValid(int value) {
+  return 0 <= value && value <= 3;
+}
+inline constexpr int ChannelControl_Action_Action_ARRAYSIZE = 3 + 1;
+const ::google::protobuf::EnumDescriptor* PROTOBUF_NONNULL ChannelControl_Action_descriptor();
+template <typename T>
+const std::string& ChannelControl_Action_Name(T value) {
+  static_assert(std::is_same<T, ChannelControl_Action>::value ||
+                    std::is_integral<T>::value,
+                "Incorrect type passed to Action_Name().");
+  return ChannelControl_Action_Name(static_cast<ChannelControl_Action>(value));
+}
+template <>
+inline const std::string& ChannelControl_Action_Name(ChannelControl_Action value) {
+  return ::google::protobuf::internal::NameOfDenseEnum<ChannelControl_Action_descriptor, 0, 3>(
+      static_cast<int>(value));
+}
+inline bool ChannelControl_Action_Parse(
+    absl::string_view name, ChannelControl_Action* PROTOBUF_NONNULL value) {
+  return ::google::protobuf::internal::ParseNamedEnum<ChannelControl_Action>(ChannelControl_Action_descriptor(), name,
+                                           value);
+}
 
 // ===================================================================
 
@@ -464,6 +512,261 @@ class ReqConnectDatagram final : public ::google::protobuf::Message
 };
 
 extern const ::google::protobuf::internal::ClassDataFull ReqConnectDatagram_class_data_;
+// -------------------------------------------------------------------
+
+class ChannelControl final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:gsync.ChannelControl) */ {
+ public:
+  inline ChannelControl() : ChannelControl(nullptr) {}
+  ~ChannelControl() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(ChannelControl* PROTOBUF_NONNULL msg, std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(ChannelControl));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR ChannelControl(::google::protobuf::internal::ConstantInitialized);
+
+  inline ChannelControl(const ChannelControl& from) : ChannelControl(nullptr, from) {}
+  inline ChannelControl(ChannelControl&& from) noexcept
+      : ChannelControl(nullptr, std::move(from)) {}
+  inline ChannelControl& operator=(const ChannelControl& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline ChannelControl& operator=(ChannelControl&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* PROTOBUF_NONNULL mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* PROTOBUF_NONNULL GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const ChannelControl& default_instance() {
+    return *reinterpret_cast<const ChannelControl*>(
+        &_ChannelControl_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 2;
+  friend void swap(ChannelControl& a, ChannelControl& b) { a.Swap(&b); }
+  inline void Swap(ChannelControl* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(ChannelControl* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  ChannelControl* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<ChannelControl>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const ChannelControl& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const ChannelControl& from) { ChannelControl::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(::google::protobuf::MessageLite& to_msg,
+                        const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      const ::google::protobuf::MessageLite& msg, ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(ChannelControl* PROTOBUF_NONNULL other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "gsync.ChannelControl"; }
+
+ protected:
+  explicit ChannelControl(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  ChannelControl(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const ChannelControl& from);
+  ChannelControl(
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, ChannelControl&& from) noexcept
+      : ChannelControl(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
+  static void* PROTOBUF_NONNULL PlacementNew_(
+      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr auto InternalNewImpl_();
+
+ public:
+  static constexpr auto InternalGenerateClassData_();
+
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+  using Action = ChannelControl_Action;
+  static constexpr Action OPEN = ChannelControl_Action_OPEN;
+  static constexpr Action CLOSE = ChannelControl_Action_CLOSE;
+  static constexpr Action OPEN_ACK = ChannelControl_Action_OPEN_ACK;
+  static constexpr Action CLOSE_ACK = ChannelControl_Action_CLOSE_ACK;
+  static inline bool Action_IsValid(int value) {
+    return ChannelControl_Action_IsValid(value);
+  }
+  static constexpr Action Action_MIN = ChannelControl_Action_Action_MIN;
+  static constexpr Action Action_MAX = ChannelControl_Action_Action_MAX;
+  static constexpr int Action_ARRAYSIZE = ChannelControl_Action_Action_ARRAYSIZE;
+  static inline const ::google::protobuf::EnumDescriptor* PROTOBUF_NONNULL Action_descriptor() {
+    return ChannelControl_Action_descriptor();
+  }
+  template <typename T>
+  static inline const std::string& Action_Name(T value) {
+    return ChannelControl_Action_Name(value);
+  }
+  static inline bool Action_Parse(
+      absl::string_view name, Action* PROTOBUF_NONNULL value) {
+    return ChannelControl_Action_Parse(name, value);
+  }
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kReasonFieldNumber = 4,
+    kActionFieldNumber = 1,
+    kRequestIdFieldNumber = 2,
+    kAcceptedFieldNumber = 3,
+  };
+  // string reason = 4;
+  void clear_reason() ;
+  const std::string& reason() const;
+  template <typename Arg_ = const std::string&, typename... Args_>
+  void set_reason(Arg_&& arg, Args_... args);
+  std::string* PROTOBUF_NONNULL mutable_reason();
+  [[nodiscard]] std::string* PROTOBUF_NULLABLE release_reason();
+  void set_allocated_reason(std::string* PROTOBUF_NULLABLE value);
+
+  private:
+  const std::string& _internal_reason() const;
+  PROTOBUF_ALWAYS_INLINE void _internal_set_reason(const std::string& value);
+  std::string* PROTOBUF_NONNULL _internal_mutable_reason();
+
+  public:
+  // optional .gsync.ChannelControl.Action action = 1;
+  bool has_action() const;
+  void clear_action() ;
+  ::gsync::ChannelControl_Action action() const;
+  void set_action(::gsync::ChannelControl_Action value);
+
+  private:
+  ::gsync::ChannelControl_Action _internal_action() const;
+  void _internal_set_action(::gsync::ChannelControl_Action value);
+
+  public:
+  // uint32 request_id = 2;
+  void clear_request_id() ;
+  ::uint32_t request_id() const;
+  void set_request_id(::uint32_t value);
+
+  private:
+  ::uint32_t _internal_request_id() const;
+  void _internal_set_request_id(::uint32_t value);
+
+  public:
+  // bool accepted = 3;
+  void clear_accepted() ;
+  bool accepted() const;
+  void set_accepted(bool value);
+
+  private:
+  bool _internal_accepted() const;
+  void _internal_set_accepted(bool value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:gsync.ChannelControl)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<2, 4,
+                                   0, 35,
+                                   2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+        const ChannelControl& from_msg);
+    ::google::protobuf::internal::HasBits<1> _has_bits_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    ::google::protobuf::internal::ArenaStringPtr reason_;
+    int action_;
+    ::uint32_t request_id_;
+    bool accepted_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_p2p_5fdatagram_2eproto;
+};
+
+extern const ::google::protobuf::internal::ClassDataFull ChannelControl_class_data_;
 
 // ===================================================================
 
@@ -615,6 +918,151 @@ inline void RespondConnectDatagram::set_allocated_name(std::string* PROTOBUF_NUL
   // @@protoc_insertion_point(field_set_allocated:gsync.RespondConnectDatagram.name)
 }
 
+// -------------------------------------------------------------------
+
+// ChannelControl
+
+// optional .gsync.ChannelControl.Action action = 1;
+inline bool ChannelControl::has_action() const {
+  bool value = (_impl_._has_bits_[0] & 0x00000002u) != 0;
+  return value;
+}
+inline void ChannelControl::clear_action() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.action_ = 0;
+  _impl_._has_bits_[0] &= ~0x00000002u;
+}
+inline ::gsync::ChannelControl_Action ChannelControl::action() const {
+  // @@protoc_insertion_point(field_get:gsync.ChannelControl.action)
+  return _internal_action();
+}
+inline void ChannelControl::set_action(::gsync::ChannelControl_Action value) {
+  _internal_set_action(value);
+  _impl_._has_bits_[0] |= 0x00000002u;
+  // @@protoc_insertion_point(field_set:gsync.ChannelControl.action)
+}
+inline ::gsync::ChannelControl_Action ChannelControl::_internal_action() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return static_cast<::gsync::ChannelControl_Action>(_impl_.action_);
+}
+inline void ChannelControl::_internal_set_action(::gsync::ChannelControl_Action value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.action_ = value;
+}
+
+// uint32 request_id = 2;
+inline void ChannelControl::clear_request_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.request_id_ = 0u;
+  _impl_._has_bits_[0] &= ~0x00000004u;
+}
+inline ::uint32_t ChannelControl::request_id() const {
+  // @@protoc_insertion_point(field_get:gsync.ChannelControl.request_id)
+  return _internal_request_id();
+}
+inline void ChannelControl::set_request_id(::uint32_t value) {
+  _internal_set_request_id(value);
+  _impl_._has_bits_[0] |= 0x00000004u;
+  // @@protoc_insertion_point(field_set:gsync.ChannelControl.request_id)
+}
+inline ::uint32_t ChannelControl::_internal_request_id() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.request_id_;
+}
+inline void ChannelControl::_internal_set_request_id(::uint32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.request_id_ = value;
+}
+
+// bool accepted = 3;
+inline void ChannelControl::clear_accepted() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.accepted_ = false;
+  _impl_._has_bits_[0] &= ~0x00000008u;
+}
+inline bool ChannelControl::accepted() const {
+  // @@protoc_insertion_point(field_get:gsync.ChannelControl.accepted)
+  return _internal_accepted();
+}
+inline void ChannelControl::set_accepted(bool value) {
+  _internal_set_accepted(value);
+  _impl_._has_bits_[0] |= 0x00000008u;
+  // @@protoc_insertion_point(field_set:gsync.ChannelControl.accepted)
+}
+inline bool ChannelControl::_internal_accepted() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.accepted_;
+}
+inline void ChannelControl::_internal_set_accepted(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.accepted_ = value;
+}
+
+// string reason = 4;
+inline void ChannelControl::clear_reason() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.reason_.ClearToEmpty();
+  _impl_._has_bits_[0] &= ~0x00000001u;
+}
+inline const std::string& ChannelControl::reason() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:gsync.ChannelControl.reason)
+  return _internal_reason();
+}
+template <typename Arg_, typename... Args_>
+PROTOBUF_ALWAYS_INLINE void ChannelControl::set_reason(Arg_&& arg, Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_._has_bits_[0] |= 0x00000001u;
+  _impl_.reason_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:gsync.ChannelControl.reason)
+}
+inline std::string* PROTOBUF_NONNULL ChannelControl::mutable_reason()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  std::string* _s = _internal_mutable_reason();
+  // @@protoc_insertion_point(field_mutable:gsync.ChannelControl.reason)
+  return _s;
+}
+inline const std::string& ChannelControl::_internal_reason() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.reason_.Get();
+}
+inline void ChannelControl::_internal_set_reason(const std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_._has_bits_[0] |= 0x00000001u;
+  _impl_.reason_.Set(value, GetArena());
+}
+inline std::string* PROTOBUF_NONNULL ChannelControl::_internal_mutable_reason() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_._has_bits_[0] |= 0x00000001u;
+  return _impl_.reason_.Mutable( GetArena());
+}
+inline std::string* PROTOBUF_NULLABLE ChannelControl::release_reason() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:gsync.ChannelControl.reason)
+  if ((_impl_._has_bits_[0] & 0x00000001u) == 0) {
+    return nullptr;
+  }
+  _impl_._has_bits_[0] &= ~0x00000001u;
+  auto* released = _impl_.reason_.Release();
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
+    _impl_.reason_.Set("", GetArena());
+  }
+  return released;
+}
+inline void ChannelControl::set_allocated_reason(std::string* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (value != nullptr) {
+    _impl_._has_bits_[0] |= 0x00000001u;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000001u;
+  }
+  _impl_.reason_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.reason_.IsDefault()) {
+    _impl_.reason_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:gsync.ChannelControl.reason)
+}
+
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif  // __GNUC__
@@ -622,6 +1070,19 @@ inline void RespondConnectDatagram::set_allocated_name(std::string* PROTOBUF_NUL
 // @@protoc_insertion_point(namespace_scope)
 }  // namespace gsync
 
+
+namespace google {
+namespace protobuf {
+
+template <>
+struct is_proto_enum<::gsync::ChannelControl_Action> : std::true_type {};
+template <>
+inline const EnumDescriptor* PROTOBUF_NONNULL GetEnumDescriptor<::gsync::ChannelControl_Action>() {
+  return ::gsync::ChannelControl_Action_descriptor();
+}
+
+}  // namespace protobuf
+}  // namespace google
 
 // @@protoc_insertion_point(global_scope)
 
