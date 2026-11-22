@@ -22,13 +22,19 @@ typedef struct GSYNC_EXTERN GSY_P2PDatagramConnectionContext
     int is_server;            // 0 = client (initiator), 1 = server (acceptor)
     void* extend;
     uint8_t _check_code; // do not modify
+    // Optional rejection detail; reason is valid only during the callback.
+    void (*on_stream_rejected)(GSY_StreamId, const char* reason, GSY_RequestId);
 } GSY_P2PDatagramConnectionContext;
 
 // Completion runs on the SDK I/O thread, possibly before this function returns.
 // The context must remain alive until the connection and its callbacks end.
 typedef void (*GSY_DatagramStreamCreated)(ErrorCode, GSY_StreamId, GSY_RequestId, void*);
-ErrorCode GSYNC_EXTERN GSY_ConnectPeerDatagram(GSY_ConnectionHwnd handle,GSY_PeerId,
+ErrorCode GSYNC_EXTERN GSY_ConnectPeerDatagram(GSY_ConnectionHwnd handle, GSY_PeerId, GSY_P2PStreamId local_stream_id,
     GSY_P2PDatagramConnectionContext*,GSY_RequestId, GSY_DatagramStreamCreated, void*);
+// Only established streams are visible. Identifiers are scoped to the connection.
+ErrorCode GSYNC_EXTERN GSY_FindPeerStream(GSY_ConnectionHwnd, GSY_P2PStreamId peer_stream_id, GSY_StreamId*);
+ErrorCode GSYNC_EXTERN GSY_GetPeerStreamIds(GSY_ConnectionHwnd, GSY_StreamId,
+    GSY_P2PStreamId* local_stream_id, GSY_P2PStreamId* peer_stream_id);
 ErrorCode GSYNC_EXTERN GSY_SendDatagram(GSY_ConnectionHwnd handle,GSY_StreamId sid,const char* data,size_t size,GSY_RequestId request_id);
 ErrorCode GSYNC_EXTERN GSY_ReqDisconnectPeerDatagram(GSY_ConnectionHwnd handle,GSY_StreamId sid,const char* reason,GSY_RequestId request_id);
 

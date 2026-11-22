@@ -7,6 +7,7 @@
 
 #include "macro.h"
 #include "def.h"
+#include "session_handle.h"
 
 #if __cplusplus
 extern "C" {
@@ -17,6 +18,9 @@ extern "C" {
     #else
     #define InvalidConnection ((GSY_ConnectionHwnd)0)
     #endif
+
+    typedef uint64_t GSY_SocketHandle;
+    #define GSY_INVALID_SOCKET ((GSY_SocketHandle)0)
 
     typedef struct GSYNC_EXTERN GSY_BaseConnectionContext {
         IUICallback on_connect;
@@ -34,6 +38,14 @@ extern "C" {
         const char* ip,short port,GSY_BaseConnectionContext* cxt);
     int GSYNC_EXTERN GSY_disconnect(GSY_ConnectionHwnd handler);
     int GSYNC_EXTERN GSY_is_connected(GSY_ConnectionHwnd handler);
+
+    /* The SDK handle is valid while the UDP socket has a live owner.
+       GSY_ReleaseSocket explicitly unregisters the handle. */
+    ErrorCode GSYNC_EXTERN GSY_GetConnectionSocket(GSY_ConnectionHwnd, GSY_SocketHandle*);
+    ErrorCode GSYNC_EXTERN GSY_ReleaseSocket(GSY_SocketHandle);
+    /* Returns EC_Pending with a reserved connection handle on success. */
+    ErrorCode GSYNC_EXTERN GSY_connect_session(const char* config_file, GSY_SessionHandle,
+        GSY_BaseConnectionContext*, GSY_ConnectionHwnd*);
 
 #if __cplusplus
 }

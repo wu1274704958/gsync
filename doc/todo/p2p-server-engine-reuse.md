@@ -1,5 +1,7 @@
 # P2P server engine 复用
 
+本文记录旧 `GSY_StartP2PPeer` 实现的复用讨论。基础 server 的可用接口、会话登记和调用流程见 [P2P Server 使用说明](../p2p-server.md)。
+
 ## 背景与现状
 
 大厅协商后的多个 P2P 连接可能复用同一个大厅 UDP socket，一个客户端也可能在多次协商中都担任 server。当前 `example1/p2p_peer.cpp` 每次调用 `GSY_StartP2PPeer` 都为该 peer 创建独立的 `P2PDatagramEngine`，即使多个 server peer 使用的是同一个 socket。每个 engine 持有自己的接收回调、地址白名单和连接回调；peer 结束后会等待其 engine 的连接全部关闭，再销毁 engine。

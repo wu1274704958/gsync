@@ -4,16 +4,18 @@ import tempfile
 import time
 from pathlib import Path
 
+mode = sys.argv[2] if len(sys.argv) > 2 else "mismatch"
+
 with tempfile.TemporaryDirectory(prefix="gsync-psk-mismatch-") as tmp:
     root = Path(tmp)
     (root / "server").mkdir()
     (root / "client").mkdir()
-    server = subprocess.Popen([sys.argv[1], "server", "mismatch"], cwd=root / "server",
+    server = subprocess.Popen([sys.argv[1], "server", mode], cwd=root / "server",
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     client = None
     try:
         time.sleep(1)
-        client = subprocess.Popen([sys.argv[1], "client", "mismatch"], cwd=root / "client",
+        client = subprocess.Popen([sys.argv[1], "client", mode], cwd=root / "client",
                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         client_out, _ = client.communicate(timeout=12)
         server_out, _ = server.communicate(timeout=12)

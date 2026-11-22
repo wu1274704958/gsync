@@ -64,6 +64,10 @@ void p2p_session_remove_connection(GSY_ConnectionHwnd);
 void p2p_session_shutdown();
 void p2p_peers_shutdown();
 void p2p_peers_initialize();
+namespace mqas::io { class UdpSocket; }
+void gsy_socket_handles_shutdown();
+std::shared_ptr<mqas::io::UdpSocket> gsy_get_socket(GSY_SocketHandle);
+bool cancel_pending_p2p_connection(GSY_ConnectionHwnd);
 
 // ── Server ────────────────────────────────────────────────────────────────────
 #include "core/server.h"
@@ -75,9 +79,11 @@ constexpr GSY_ServerHwnd MAX_SERVER_HWND = 1000;
 // SERVER_ENGINE_ID_OFFSET is added to server_hwnd when used as the engine_id
 // namespace for connections accepted by that server, preventing overlap with
 // client-produced conn_hwnds.
-constexpr GSY_EngineId SERVER_ENGINE_ID_OFFSET = 50000;
+// Leave enough room for the server handle and its connection index in uint32_t.
+constexpr GSY_EngineId SERVER_ENGINE_ID_OFFSET = 10000;
 
 struct ServerEngineEntry;
+struct P2PServerState;
 struct ServerEntry {
     GSY_ServerHwnd hwnd = InvalidServer;
     GSY_BaseServerContext* ctx = nullptr;
@@ -86,8 +92,15 @@ struct ServerEntry {
     bool finalized = false;
     std::shared_ptr<const toml::value> config;
     std::weak_ptr<ServerEngineEntry> owner;
+    std::shared_ptr<P2PServerState> p2p;
     std::unordered_map<GSY_ConnectionHwnd, std::weak_ptr<mqas::core::IConnect>> connections;
 };
+ErrorCode start_p2p_server(const std::shared_ptr<ServerEntry>&, GSY_EngineId,
+    const char* path, std::shared_ptr<const toml::value>);
+void stop_p2p_server(const std::shared_ptr<ServerEntry>&);
+bool authenticate_p2p_server(const std::shared_ptr<ServerEntry>&, const std::shared_ptr<mqas::core::IConnect>&);
+void attach_p2p_server_stream_policy(const std::shared_ptr<ServerEntry>&,
+    const std::shared_ptr<mqas::core::IConnect>&, GSY_ConnectionHwnd);
 struct ServerEngineEntry {
     EngineKey key;
     sockaddr_storage bind_addr{};

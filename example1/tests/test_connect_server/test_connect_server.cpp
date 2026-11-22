@@ -88,7 +88,7 @@ static void on_connect(int code, unsigned int conn_hwnd)
         dg_ctx->verify_token          = Token;
         dg_ctx->verify_token_len      = static_cast<int>(strlen(Token));
         dg_ctx->self_id = 1;
-        const auto result = GSY_ConnectPeerDatagram(conn_hwnd, INVALID_PID, dg_ctx, 41, on_stream_created, nullptr);
+        const auto result = GSY_ConnectPeerDatagram(conn_hwnd, INVALID_PID, 101, dg_ctx, 41, on_stream_created, nullptr);
         if (result == EC_EngineNotMatch) {
             printf("[datagram] unauthenticated connection rejected\n");
             delete dg_ctx;

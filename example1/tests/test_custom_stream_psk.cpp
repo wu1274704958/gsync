@@ -56,11 +56,23 @@ using Engine = mqas::core::sub_engine<mqas::core::engine<Connection>>;
 
 int main(int argc, char** argv) {
     const bool server = argc > 1 && std::string(argv[1]) == "server";
-    const bool mismatch = argc > 2 && std::string(argv[2]) == "mismatch";
+    const std::string mode = argc > 2 ? argv[2] : "";
+    const bool wrong_name = mode == "wrong-name";
+    const bool mismatch = mode == "mismatch" || wrong_name;
     mqas::Context<mqas::core::InitFlags::BOTH> context;
     mqas::io::Context io;
     Engine engine(io);
-    auto tls_context = make_psk_context(server, mismatch);
+    auto tls_context = make_psk_context(server, mode == "mismatch");
+    const std::array<unsigned char, 16> other_identity{7, 8, 9};
+    if (server && wrong_name) {
+        const std::array<unsigned char, 32> key{1, 2, 3}, other_key{4, 5, 6};
+        const std::array<unsigned char, 16> identity{4, 5, 6};
+        const mqas::tools::p2p::PskCredentialView credentials[]{
+            {key, identity, 2, 1}, {other_key, other_identity, 2, 3}
+        };
+        const auto alpn = toml::find<std::string>(toml::parse(SERVER_CONFIG_PATH), "engine_config", "alpn");
+        tls_context = mqas::tools::p2p::make_psk_server_context(credentials, alpn);
+    }
     if (!tls_context) return 5;
     const char* client_config = std::getenv("MQAS_TEST_CLIENT_CONFIG");
     engine.init(server ? SERVER_CONFIG_PATH : (client_config ? client_config : CLIENT_CONFIG_PATH),
@@ -83,7 +95,8 @@ int main(int argc, char** argv) {
         if (!mqas::io::Ip::str2addr_ipv4("127.0.0.1", 8101, addr)) return 2;
         engine.get_engine()->whitelist_addr.push_back(addr);
         engine.get_engine()->whitelist_port.push_back(8101);
-        auto conn = engine.get_engine()->connect(addr, N_LSQVER).lock();
+        const auto name = mqas::tools::p2p::psk_server_name(other_identity);
+        auto conn = engine.get_engine()->connect(addr, N_LSQVER, wrong_name ? name.c_str() : nullptr).lock();
         if (!conn) return 3;
         if (conn->security_info().handshake != mqas::core::HandshakeState::Pending ||
             conn->security_info().authentication != mqas::core::PeerAuthentication::None) return 6;

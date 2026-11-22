@@ -35,7 +35,7 @@ static void peer_connected(GSY_P2PPeerHandle, GSY_ConnectionHwnd conn, void*) {
     const char* scenario = std::getenv("GSYNC_TEST_PEER_SCENARIO");
     if (!server_role && (!scenario || std::strcmp(scenario, "lobby_close") != 0)) {
         datagram_started = true;
-        if (GSY_ConnectPeerDatagram(conn, INVALID_PID, &datagram, 1, stream_created, nullptr) != EC_Pending)
+        if (GSY_ConnectPeerDatagram(conn, INVALID_PID, 101, &datagram, 1, stream_created, nullptr) != EC_Pending)
             failed = true;
     }
 }
@@ -138,6 +138,11 @@ int main(int argc, char** argv) {
     peer_config = argv[3];
     datagram.on_connected = [](ErrorCode code, GSY_StreamId sid, GSY_PeerId peer, const char*, GSY_RequestId) {
         if (code != EC_Ok || peer != expected_peer) { failed = true; return; }
+        uint32_t local = 0, remote = 0;
+        GSY_StreamId found = 0;
+        if (GSY_GetPeerStreamIds(peer_connection, sid, &local, &remote) != EC_Ok ||
+            local != 101 || remote != 101 ||
+            GSY_FindPeerStream(peer_connection, remote, &found) != EC_Ok || found != sid) failed = true;
         std::printf("datagram connected sid=%llu\n", (unsigned long long)sid);
         if (!server_role) GSY_SendDatagram(peer_connection, sid, "ping", 4, NONE_RID);
     };
@@ -191,7 +196,7 @@ int main(int argc, char** argv) {
         if (lobby_close && peer_connection && !lobby_close_requested.exchange(true))
             GSY_disconnect(lobby_connection);
         if (lobby_close && lobby_closed && peer_connection && !server_role && !datagram_started.exchange(true)) {
-            if (GSY_ConnectPeerDatagram(peer_connection, INVALID_PID, &datagram, 1, stream_created, nullptr) != EC_Pending)
+            if (GSY_ConnectPeerDatagram(peer_connection, INVALID_PID, 101, &datagram, 1, stream_created, nullptr) != EC_Pending)
                 failed = true;
         }
         if (skipped_peer && ++skipped_ticks >= (scenario && std::strcmp(scenario, "timeout") == 0 ? 1150 : 150)) break;

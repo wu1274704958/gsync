@@ -48,6 +48,8 @@ extern "C" {
     typedef unsigned int GSY_EngineId;
 
     typedef uint64_t GSY_StreamId;
+    /* Nonzero application stream identifier, unique per direction on a P2P connection. */
+    typedef uint32_t GSY_P2PStreamId;
 
 
 #if __cplusplus

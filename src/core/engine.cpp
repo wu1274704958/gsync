@@ -55,6 +55,7 @@ int GSY_terminate()
     p2p_peers_shutdown();
     push_task_with_result<int>([] { shutdown_server_engines(); return 0; }, true);
     wait_for_server_shutdown();
+    push_task_with_result<int>([] { gsy_socket_handles_shutdown(); return 0; }, true);
     is_running = false;
     uv_async_send(&async_task_handle);
     main_thread->join();

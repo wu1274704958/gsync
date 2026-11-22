@@ -2,6 +2,7 @@ import ctypes as C, os, time, subprocess, sys, tempfile
 from pathlib import Path
 from pathlib import Path
 dll_path, lobby_exe, tests_dir, peer_config = map(Path, sys.argv[1:5])
+basic_server = len(sys.argv) > 5 and sys.argv[5] == "server"
 b = dll_path.parent
 if os.name == 'nt': os.add_dll_directory(str(b))
 d=C.CDLL(str(dll_path))
@@ -27,10 +28,14 @@ PCON=C.CFUNCTYPE(None,S,U,P); PSTR=C.CFUNCTYPE(None,S,U,S,P); PTERM=C.CFUNCTYPE(
 class PeerCtx(C.Structure): _fields_=[('connected',PCON),('stream',PSTR),('failed',PTERM),('closed',PTERM),('user',P)]
 DCON=C.CFUNCTYPE(None,I,S,U,C.c_char_p,U); DRECV=C.CFUNCTYPE(None,P,C.c_size_t,S,U,U); DFAIL=C.CFUNCTYPE(None,I,S,U,U)
 DEND=C.CFUNCTYPE(None,I,S,U,C.c_char_p); DERROR=C.CFUNCTYPE(None,U,S,I,C.c_char_p,U)
-class DCtx(C.Structure): _fields_=[('connected',DCON),('recv',DRECV),('disconnected',DEND),('failed',DFAIL),('error',DERROR),('self_id',U),('token',P),('token_len',I),('relay',I),('server',I),('extend',P),('check',C.c_uint8)]
+class DCtx(C.Structure): _fields_=[('connected',DCON),('recv',DRECV),('disconnected',DEND),('failed',DFAIL),('error',DERROR),('self_id',U),('token',P),('token_len',I),('relay',I),('server',I),('extend',P),('check',C.c_uint8),('rejected',P)]
 CREATED=C.CFUNCTYPE(None,I,S,U,P)
+ACCEPT=C.CFUNCTYPE(P,U,U); DISCONNECT=C.CFUNCTYPE(None,U,U)
+POLICY=C.CFUNCTYPE(I,U,U,S,U,C.POINTER(U),C.POINTER(P))
+REJECTED=C.CFUNCTYPE(None,S,C.c_char_p,U)
+class ServerCtx(C.Structure): _fields_=[('started',IO),('stopped',IO),('error',IO),('accept',ACCEPT),('disconnect',DISCONNECT),('extra',P),('policy',POLICY),('socket',S),('mode',I)]
 class LC(C.Structure): _fields_=[('reg',REG),('unreg',P),('respond',P),('list',P),('request',P),('error',P),('change',P),('attempt',P),('quit',P),('extend',P),('check',C.c_uint8)]
-refs=[]; connected={}; registered={}; incoming={}; errors={}; results={}; peerconn={}; peerstreams={}; datagram={}; received=[]; peerc=[]; dc=[]
+refs=[]; connected={}; registered={}; incoming={}; errors={}; results={}; peerconn={}; peerstreams={}; datagram={}; received=[]; deliveries=[]; stream_creation={}; peerc=[]; dc=[]
 @ERR
 def err(msg,code): print('error',code,flush=True)
 @IO
@@ -60,7 +65,10 @@ def pterm(h,code,user): print('peer terminal',int(user),code,flush=True)
 @DCON
 def dconnected(code,sid,peer,name,rid): datagram[sid]=(code,peer)
 @DRECV
-def dreceived(ptr,size,sid,peer,conn): received.append(C.string_at(ptr,size))
+def dreceived(ptr,size,sid,peer,conn):
+ payload=C.string_at(ptr,size)
+ received.append(payload)
+ deliveries.append((sid,payload))
 @DEND
 def dend(code,sid,peer,reason): pass
 @DFAIL
@@ -68,7 +76,9 @@ def dfail(code,sid,peer,rid): print('datagram failed',code,flush=True)
 @DERROR
 def derror(conn,sid,code,msg,rid): print('datagram error',code,flush=True)
 @CREATED
-def created(code,sid,rid,user): peerstreams[sid]=int(user)
+def created(code,sid,rid,user):
+ stream_creation[rid]=(code,sid)
+ if sid: peerstreams[sid]=int(user)
 refs.extend([err,con,dis,failure,stream,reg,request,helper,pconnected,pstream,pterm,dconnected,dreceived,dend,dfail,derror,created]); gc=GC(err); contexts=[CC(con,dis,failure,stream,stream,None),CC(con,dis,failure,stream,stream,None)]; lc=[LC() for x in range(2)]
 for c in lc: c.reg=reg; c.request=C.cast(request,P); c.quit=C.cast(helper,P)
 d.GSY_initialize.argtypes=[I,C.POINTER(GC)];d.GSY_connect.argtypes=[U,C.c_char_p,C.c_char_p,C.c_short,C.POINTER(CC)];d.GSY_connect.restype=U
@@ -104,34 +114,178 @@ try:
  assert len(results)==2 and all(r.ret==0 for r in results.values()),results
  assert results[sids[0]].peer_addr.port != results[sids[1]].peer_addr.port
  d.GSY_StartP2PPeer.argtypes=[C.c_char_p,U,C.POINTER(Result),C.POINTER(PeerCtx),C.POINTER(S)]
- d.GSY_StartP2PPeer.restype=I; d.GSY_ConnectPeerDatagram.argtypes=[U,U,C.POINTER(DCtx),U,CREATED,P]
+ d.GSY_StartP2PPeer.restype=I; d.GSY_ConnectPeerDatagram.argtypes=[U,U,U,C.POINTER(DCtx),U,CREATED,P]
  d.GSY_ServerConnectPeerDatagram.argtypes=[U,S,C.POINTER(DCtx),U]
  d.GSY_SendDatagram.argtypes=[U,S,C.c_char_p,C.c_size_t,U]; d.GSY_CloseP2PPeer.argtypes=[S]
  peer_handles=[S(),S()]
  cfg=os.fsencode(peer_config)
+ client=next(i for i in range(2) if not results[sids[i]].server); server=1-client
  for i in range(2):
-  peer=PeerCtx(pconnected,pstream,pterm,pterm,i+1); peerc.append(peer)
-  data=DCtx(dconnected,dreceived,dend,dfail,derror,registered[sids[i]][1],None,0,0,results[sids[i]].server,None,0); dc.append(data)
-  assert d.GSY_StartP2PPeer(cfg,registered[sids[i]][1],C.byref(results[sids[i]]),C.byref(peer),C.byref(peer_handles[i]))==2
+  data=DCtx(dconnected,dreceived,dend,dfail,derror,registered[sids[i]][1],None,0,0,results[sids[i]].server,None,0,None); dc.append(data)
+ if basic_server:
+  started=[]; stopped=[]; rejected=[]; decisions=[]; server_connections=[]; active_connections=[]
+  first_results=dict(results)
+  incoming.clear(); results.clear()
+  assert d.GSY_RequestConnectPeer(handles[0],sids[0],registered[sids[1]][1],10)==2
+  for _ in range(400):
+   if sids[1] in incoming: break
+   time.sleep(.01)
+  assert sids[1] in incoming, incoming
+  assert d.GSY_RespondPeerConnectRequest(handles[1],sids[1],incoming[sids[1]],True,11)==2
+  for _ in range(600):
+   if len(results)==2: break
+   time.sleep(.01)
+  assert len(results)==2 and all(r.ret==0 for r in results.values()), results
+  assert all(results[sid].server == first_results[sid].server for sid in sids)
+  assert all(results[sid].peer_addr.port == first_results[sid].peer_addr.port for sid in sids)
+  second_results=dict(results)
+  results=first_results
+  rejection=C.create_string_buffer(b'blocked by application')
+  @REJECTED
+  def on_rejected(sid,reason,rid): rejected.append((reason,rid))
+  dc[client].rejected=C.cast(on_rejected,P)
+  @IO
+  def on_started(code,hwnd): started.append((code,hwnd))
+  @IO
+  def on_stopped(code,hwnd): stopped.append((code,hwnd))
+  @IO
+  def client_ready(code,handle):
+   active_connections.append(handle)
+   peerconn.setdefault(client+1,handle)
+  @IO
+  def server_ready(code,handle):
+   server_connections.append(handle)
+   peerconn.setdefault(server+1,handle)
+  @SC
+  def server_stream(handle,sid,code): pstream(0,handle,sid,server+1)
+  @ACCEPT
+  def accept(hwnd,handle): return C.addressof(server_conn_ctx)
+  @POLICY
+  def accept_stream(hwnd,handle,sid,remote,local,reason):
+   decisions.append(remote)
+   if remote == 99:
+    reason[0]=C.addressof(rejection)
+    return 0
+   local[0]=remote+100
+   return 1
+  server_conn_ctx=CC(server_ready,dis,failure,server_stream,stream,None)
+  active_ctx=CC(client_ready,dis,failure,stream,stream,None)
+  d.GSY_GetConnectionSocket.argtypes=[U,C.POINTER(S)]; d.GSY_ReleaseSocket.argtypes=[S]
+  d.GSY_launch_server.argtypes=[U,C.c_char_p,C.POINTER(ServerCtx)]; d.GSY_launch_server.restype=U
+  d.GSY_stop_server.argtypes=[U]; d.GSY_RegisterServerP2PSession.argtypes=[U,S]
+  d.GSY_CancelServerP2PSession.argtypes=[U,S]
+  d.GSY_connect_session.argtypes=[C.c_char_p,S,C.POINTER(CC),C.POINTER(U)]
+  d.GSY_FindPeerStream.argtypes=[U,U,C.POINTER(S)]
+  d.GSY_GetPeerStreamIds.argtypes=[U,S,C.POINTER(U),C.POINTER(U)]
+  socket_handle=S()
+  assert d.GSY_GetConnectionSocket(handles[server],C.byref(socket_handle))==0
+  sc=ServerCtx(on_started,on_stopped,failure,accept,DISCONNECT(),None,accept_stream,socket_handle.value,1)
+  sh=d.GSY_launch_server(2,cfg,C.byref(sc)); assert sh
+  for _ in range(400):
+   if started: break
+   time.sleep(.01)
+  assert started==[(0,sh)], (started,errors)
+  assert d.GSY_ReleaseSocket(socket_handle)==0
+  assert d.GSY_RegisterServerP2PSession(sh,results[sids[client]].session)==-1
+  session=results[sids[server]].session
+  assert d.GSY_RegisterServerP2PSession(sh,session)==0
+  assert d.GSY_RegisterServerP2PSession(sh,session)==1015
+  assert d.GSY_CancelServerP2PSession(sh,session)==0
+  assert d.GSY_RegisterServerP2PSession(sh,session)==0
+  for _ in range(1300):
+   if sh in errors: break
+   time.sleep(.01)
+  assert errors.pop(sh,None)==1014, errors
+  assert d.GSY_CancelServerP2PSession(sh,session)==1006
+  assert d.GSY_RegisterServerP2PSession(sh,session)==0
+  active_handle=U()
+  assert d.GSY_RegisterServerP2PSession(sh,second_results[sids[server]].session)==0
+  assert d.GSY_connect_session(cfg,results[sids[client]].session,C.byref(active_ctx),C.byref(active_handle))==2
+  second_handle=U()
+  assert d.GSY_connect_session(cfg,second_results[sids[client]].session,C.byref(active_ctx),C.byref(second_handle))==2
+  for _ in range(600):
+   if len(active_connections)==2 and len(server_connections)==2: break
+   time.sleep(.01)
+  assert len(active_connections)==len(server_connections)==2, (active_connections,server_connections,errors)
+  active_first=active_connections[0]
+  assert d.GSY_disconnect(active_connections[1])==0
+  assert d.GSY_is_connected(active_first)==1
+  assert d.GSY_is_connected(handles[server])==1
+ else:
+  for i in range(2):
+   peer=PeerCtx(pconnected,pstream,pterm,pterm,i+1); peerc.append(peer)
+   assert d.GSY_StartP2PPeer(cfg,registered[sids[i]][1],C.byref(results[sids[i]]),C.byref(peer),C.byref(peer_handles[i]))==2
  for _ in range(1000):
   if len(peerconn)==2: break
   time.sleep(.01)
  print('peerconn',peerconn,flush=True); assert len(peerconn)==2
  client=next(i for i in range(2) if not results[sids[i]].server); server=1-client
- assert d.GSY_ConnectPeerDatagram(peerconn[client+1],results[sids[client]].peer,C.byref(dc[client]),3,created,client+1)==2
+ if basic_server:
+  assert d.GSY_ConnectPeerDatagram(peerconn[client+1],0,99,C.byref(dc[client]),99,created,client+1)==2
+  for _ in range(400):
+   if rejected: break
+   time.sleep(.01)
+  assert rejected==[(b'blocked by application',99)], (decisions,rejected,errors)
+ assert d.GSY_ConnectPeerDatagram(peerconn[client+1],results[sids[client]].peer,101,C.byref(dc[client]),3,created,client+1)==2
  accepted=set()
  for _ in range(1000):
   if len(datagram)==2: break
   time.sleep(.01)
  print('datagram',datagram,flush=True); assert len(datagram)==2,datagram
- client_sid=next(sid for sid,index in peerstreams.items() if index==client+1)
+ client_sid=next(sid for sid,index in peerstreams.items() if index==client+1 and sid in datagram)
+ if basic_server:
+  server_sid=next(sid for sid,index in peerstreams.items() if index==server+1 and sid in datagram)
+  surviving=[h for h in server_connections if d.GSY_GetPeerStreamIds(h,server_sid,C.byref(U()),C.byref(U()))==0]
+  assert len(surviving)==1
+  peerconn[server+1]=surviving[0]
+  for idx,local_id,remote_id in ((client,101,201),(server,201,101)):
+   sid=S(); local=U(); remote=U()
+   assert d.GSY_FindPeerStream(peerconn[idx+1],remote_id,C.byref(sid))==0
+   assert d.GSY_GetPeerStreamIds(peerconn[idx+1],sid,C.byref(local),C.byref(remote))==0
+   assert (local.value,remote.value)==(local_id,remote_id)
+  assert decisions==[99,101]
+  assert d.GSY_ConnectPeerDatagram(peerconn[client+1],0,0,C.byref(dc[client]),100,created,client+1)==-1
+  assert d.GSY_ConnectPeerDatagram(peerconn[client+1],0,101,C.byref(dc[client]),102,created,client+1)==2
+  assert d.GSY_ConnectPeerDatagram(peerconn[client+1],0,102,C.byref(dc[client]),103,created,client+1)==2
+  for _ in range(400):
+   if 102 in stream_creation and len(datagram)==4: break
+   time.sleep(.01)
+  assert stream_creation.get(102)==(1010,0), stream_creation
+  assert len(datagram)==4 and decisions==[99,101,102], (datagram,decisions)
+  other_client_sid=S(); other_server_sid=S()
+  assert d.GSY_FindPeerStream(peerconn[client+1],202,C.byref(other_client_sid))==0
+  assert d.GSY_FindPeerStream(peerconn[server+1],102,C.byref(other_server_sid))==0
+  assert d.GSY_SendDatagram(peerconn[client+1],other_client_sid,b'other',5,6)==2
+  for _ in range(400):
+   if b'other' in received: break
+   time.sleep(.01)
+  assert [(sid,payload) for sid,payload in deliveries if payload==b'other']==[(other_server_sid.value,b'other')]
  assert d.GSY_SendDatagram(peerconn[client+1],client_sid,b'hello',5,5)==2
  for _ in range(500):
   if b'hello' in received: break
   time.sleep(.01)
  assert b'hello' in received,received
  print('PASS: authenticated P2P datagram exchanged in one process',flush=True)
- for h in peer_handles: d.GSY_CloseP2PPeer(h)
+ if basic_server:
+  d.GSY_ReqDisconnectPeerDatagram.argtypes=[U,S,C.c_char_p,U]
+  assert d.GSY_ReqDisconnectPeerDatagram(peerconn[client+1],client_sid,b'done',7)==2
+  for _ in range(400):
+   if d.GSY_FindPeerStream(peerconn[client+1],201,C.byref(S()))!=0: break
+   time.sleep(.01)
+  assert d.GSY_FindPeerStream(peerconn[client+1],201,C.byref(S()))==1201
+  assert d.GSY_FindPeerStream(peerconn[server+1],101,C.byref(S()))==1201
+  assert d.GSY_ConnectPeerDatagram(peerconn[client+1],0,101,C.byref(dc[client]),104,created,client+1)==2
+  for _ in range(400):
+   if d.GSY_FindPeerStream(peerconn[client+1],201,C.byref(S()))==0: break
+   time.sleep(.01)
+  assert d.GSY_FindPeerStream(peerconn[client+1],201,C.byref(S()))==0
+  assert d.GSY_stop_server(sh)==0
+  for _ in range(400):
+   if stopped: break
+   time.sleep(.01)
+  assert stopped==[(0,sh)]
+ else:
+  for h in peer_handles: d.GSY_CloseP2PPeer(h)
  time.sleep(.2)
  failed_handle=d.GSY_connect(1,os.fsencode(tmp_path/'missing.toml'),b'127.0.0.1',8101,C.byref(contexts[0]))
  assert failed_handle and failed_handle not in handles

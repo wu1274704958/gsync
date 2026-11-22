@@ -2,6 +2,7 @@
 #include <memory>
 #include <utility>
 #include <mqas/io/context.h>
+#include <mqas/io/udp.h>
 
 #include "mqas/context.h"
 #include "mqas/core/engine_driver.h"
@@ -16,6 +17,50 @@ mqas::tools::unique_id_generator<GSY_ConnectionHwnd,true> id_generator;
 
 std::unordered_map<GSY_ConnectionHwnd,std::weak_ptr<mqas::core::IConnect>> connect_map;
 std::mutex connect_mutex;
+
+// Accessed only on the SDK I/O thread. Socket lifetime is owned by its users.
+static std::unordered_map<GSY_SocketHandle, std::weak_ptr<mqas::io::UdpSocket>> socket_handles;
+static GSY_SocketHandle next_socket_handle = 1;
+
+void gsy_socket_handles_shutdown() { socket_handles.clear(); }
+std::shared_ptr<mqas::io::UdpSocket> gsy_get_socket(GSY_SocketHandle handle) {
+    std::erase_if(socket_handles, [](const auto& entry) { return entry.second.expired(); });
+    const auto it = socket_handles.find(handle);
+    return it == socket_handles.end() ? nullptr : it->second.lock();
+}
+
+ErrorCode GSY_GetConnectionSocket(GSY_ConnectionHwnd handle, GSY_SocketHandle* out)
+{
+    if (!out) return EC_Fail;
+    *out = GSY_INVALID_SOCKET;
+    if (!is_running) return EC_NotInitialized;
+    return push_task_with_result<ErrorCode>([handle, out] {
+        std::shared_ptr<mqas::core::IConnect> conn;
+        {
+            std::lock_guard lock(connect_mutex);
+            auto it = connect_map.find(handle);
+            if (it != connect_map.end()) conn = it->second.lock();
+        }
+        if (!conn || conn->is_closed()) return EC_InvalidHandler;
+        const auto cxt = conn->get_engine_cxt();
+        const auto engine = cxt ? cxt->engine.lock() : nullptr;
+        const auto socket = engine ? engine->get_socket() : nullptr;
+        if (!socket) return EC_InvalidHandler;
+        if (!next_socket_handle) return EC_ConnectOverLimit;
+        const auto id = next_socket_handle++;
+        socket_handles.emplace(id, socket);
+        *out = id;
+        return EC_Ok;
+    });
+}
+
+ErrorCode GSY_ReleaseSocket(GSY_SocketHandle handle)
+{
+    if (!is_running) return EC_NotInitialized;
+    return push_task_with_result<ErrorCode>([handle] {
+        return socket_handles.erase(handle) ? EC_Ok : EC_InvalidHandler;
+    });
+}
 
 void destroy_connect(const GSY_ConnectionHwnd hwnd) {
     std::shared_ptr<mqas::core::IConnect> conn;
@@ -53,11 +98,14 @@ void push_destroy_connect_task(GSY_ConnectionHwnd hwnd) {
 
 int GSY_disconnect(GSY_ConnectionHwnd handler)
 {
-    std::lock_guard<std::mutex> lock(connect_mutex);
-    if (!connect_map.contains(handler))
-        return EC_InvalidHandler;
-    push_destroy_connect_task(handler);
-    return EC_Ok;
+    {
+        std::lock_guard lock(connect_mutex);
+        if (connect_map.contains(handler)) {
+            push_destroy_connect_task(handler);
+            return EC_Ok;
+        }
+    }
+    return cancel_pending_p2p_connection(handler) ? EC_Ok : EC_InvalidHandler;
 }
 
 

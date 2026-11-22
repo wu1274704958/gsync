@@ -14,12 +14,14 @@ START = c.CFUNCTYPE(None, I, U); DIS = c.CFUNCTYPE(None, U, U); ACCEPT = c.CFUNC
 STREAM = c.CFUNCTYPE(None, U, c.c_uint64, I)
 class Global(c.Structure): _fields_ = [('error', ERR)]
 class Connection(c.Structure): _fields_ = [('connect', EVENT), ('disconnect', EVENT), ('error', EVENT), ('open', STREAM), ('close', STREAM), ('extra', P)]
-class Server(c.Structure): _fields_ = [('started', START), ('stopped', START), ('error', EVENT), ('accept', ACCEPT), ('disconnect', DIS), ('extra', P)]
+class Server(c.Structure): _fields_ = [('started', START), ('stopped', START), ('error', EVENT), ('accept', ACCEPT), ('disconnect', DIS), ('extra', P), ('p2p_request', P), ('socket', c.c_uint64), ('mode', I)]
 lib.GSY_initialize.argtypes = [I, c.POINTER(Global)]; lib.GSY_initialize.restype = I
 lib.GSY_launch_server.argtypes = [U, c.c_char_p, c.POINTER(Server)]; lib.GSY_launch_server.restype = U
 lib.GSY_stop_server.argtypes = [U]; lib.GSY_stop_server.restype = I
 lib.GSY_connect.argtypes = [U, c.c_char_p, c.c_char_p, c.c_short, c.POINTER(Connection)]; lib.GSY_connect.restype = U
 lib.GSY_disconnect.argtypes = [U]; lib.GSY_disconnect.restype = I
+lib.GSY_GetConnectionSocket.argtypes = [U, c.POINTER(c.c_uint64)]; lib.GSY_GetConnectionSocket.restype = I
+lib.GSY_ReleaseSocket.argtypes = [c.c_uint64]; lib.GSY_ReleaseSocket.restype = I
 lib.GSY_terminate.restype = I
 lib.GSY_test_server_engine.argtypes = [U]; lib.GSY_test_server_engine.restype = c.c_size_t
 lib.GSY_test_server_port.argtypes = [U]; lib.GSY_test_server_port.restype = c.c_uint16
@@ -122,6 +124,21 @@ def run():
         ch=lib.GSY_connect(2,str(tmp/'client.toml').encode(),b'127.0.0.1',port,c.byref(client)); assert ch
         wait(lambda: any(e[:2]==('b','accept') for e in events), 'connection routed to second server')
         wait(lambda: any(e[0]=='client_connected' and e[1]==0 for e in events), 'client connected')
+        socket_handle = c.c_uint64()
+        assert lib.GSY_GetConnectionSocket(ch, c.byref(socket_handle)) == 0 and socket_handle.value
+        assert lib.GSY_ReleaseSocket(socket_handle) == 0
+        assert lib.GSY_ReleaseSocket(socket_handle) == 1006  # EC_InvalidHandler
+        expired_socket, unrelated_socket = c.c_uint64(), c.c_uint64()
+        assert lib.GSY_GetConnectionSocket(ch, c.byref(expired_socket)) == 0
+        assert lib.GSY_GetConnectionSocket(ch, c.byref(unrelated_socket)) == 0
+        bad_mode = server_ctx('normal-with-socket', False)
+        bad_mode.socket = expired_socket.value
+        assert lib.GSY_launch_server(2, path, c.byref(bad_mode))
+        wait(lambda: ('normal-with-socket', 'error', -1) in [e[:3] for e in events], 'normal mode rejects a socket')
+        no_socket = server_ctx('p2p-without-socket', False)
+        no_socket.mode = 1
+        assert lib.GSY_launch_server(2, path, c.byref(no_socket))
+        wait(lambda: ('p2p-without-socket', 'error', 1006) in [e[:3] for e in events], 'P2P mode requires a socket')
         assert any(e[:2]==('a','accept') for e in events)
         assert lib.GSY_stop_server(ah)==0
         wait(lambda: any(e[:2]==('a','stopped') for e in events), 'first server stopped')
@@ -130,6 +147,15 @@ def run():
         wait(lambda: any(e[:2]==('b','disconnect') for e in events), 'owned connection closed')
         wait(lambda: any(e[:2]==('b','stopped') for e in events), 'second server stopped')
         wait(lambda: lib.GSY_test_server_engine_count() == 0, 'last shared engine released')
+        assert lib.GSY_disconnect(ch) in (0, 1006)
+        wait(lambda: ('client_disconnected', 1005, ch) in events, 'client socket owner disconnected')
+        stale = server_ctx('stale-socket', False)
+        stale.socket = expired_socket.value
+        stale.mode = 1
+        assert lib.GSY_launch_server(2, path, c.byref(stale))
+        wait(lambda: any(e[:3] == ('stale-socket', 'error', 1006) for e in events), 'expired socket rejected')
+        assert lib.GSY_ReleaseSocket(expired_socket) == 1006
+        assert lib.GSY_ReleaseSocket(unrelated_socket) == 1006
         assert lib.GSY_test_server_engine(ah) == 0 and lib.GSY_test_server_engine(bh) == 0
         restarted = server_ctx('restarted', False)
         rh = lib.GSY_launch_server(2, path, c.byref(restarted)); assert rh

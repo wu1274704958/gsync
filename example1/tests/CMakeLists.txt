@@ -83,6 +83,9 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME custom_stream_psk_mismatch COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test_custom_stream_psk_mismatch.py $<TARGET_FILE:test_custom_stream_psk>)
     set_tests_properties(custom_stream_psk_mismatch PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+    add_test(NAME p2p_psk_wrong_session_name COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_custom_stream_psk_mismatch.py $<TARGET_FILE:test_custom_stream_psk> wrong-name)
+    set_tests_properties(p2p_psk_wrong_session_name PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
     add_test(NAME psk_connection_isolation COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test_psk_connection_isolation.py $<TARGET_FILE:test_custom_stream_psk>
         ${CMAKE_CURRENT_SOURCE_DIR}/test_connect_server/conf.txt)
@@ -97,6 +100,11 @@ if(Python3_Interpreter_FOUND)
         $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/example1/tests/p2p_isolated_config.toml)
     set_tests_properties(p2p_isolated_same_process PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+    add_test(NAME p2p_basic_server COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_p2p.py $<TARGET_FILE:gsync_e1>
+        $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/example1/tests/p2p_isolated_config.toml server)
+    set_tests_properties(p2p_basic_server PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
     add_test(NAME p2p_peer COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test_p2p_peer.py $<TARGET_FILE:test_lobby_registration>
         $<TARGET_FILE:test_p2p_peer> ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
@@ -116,3 +124,7 @@ if(Python3_Interpreter_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/test_server_engine_reuse.py ${CMAKE_SOURCE_DIR} $<TARGET_FILE:gsync_e1_test>)
     set_tests_properties(server_engine_reuse PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 endif()
+
+add_executable(test_direct_stream_registry test_direct_stream_registry.cpp)
+target_link_libraries(test_direct_stream_registry PRIVATE mqas)
+add_test(NAME direct_stream_registry COMMAND test_direct_stream_registry)

@@ -8,6 +8,7 @@
 #include "mqas/core/engine_driver.h"
 #include "mqas/core/engine_settings.h"
 #include "mqas/io/ip.h"
+#include "mqas/comm/locator.h"
 
 extern bool server_shutting_down;
 
@@ -23,6 +24,7 @@ void setup_server_connect_signals(mqas::core::engine<C>* engine, const std::shar
         if (!entry) { conn->close(); return; }
         for (const auto& server : entry->servers) {
             if (server->stopping || !server->ctx || !server->ctx->on_client_connect) continue;
+            if (server->p2p && !authenticate_p2p_server(server, conn)) break;
             const auto conn_hwnd = get_new_connection_hwnd(server->hwnd + SERVER_ENGINE_ID_OFFSET);
             if (conn_hwnd == InvalidConnection) {
                 if (server->ctx->on_error) server->ctx->on_error(EC_ConnectOverLimit, server->hwnd);
@@ -41,10 +43,12 @@ void setup_server_connect_signals(mqas::core::engine<C>* engine, const std::shar
             server->connections.emplace(conn_hwnd, conn);
             conn->set_connection_config(server->config);
             conn->set_cxt(conn_ctx);
-            conn->on_close_signal.connect([server, conn_hwnd](mqas::core::IConnect&) {
+            if (server->p2p) attach_p2p_server_stream_policy(server, conn, conn_hwnd);
+            conn->on_close_signal.connect([server, conn_hwnd, conn_ctx](mqas::core::IConnect&) {
                 p2p_session_remove_connection(conn_hwnd);
                 destroy_connect(conn_hwnd);
                 server->connections.erase(conn_hwnd);
+                if (server->p2p && conn_ctx->on_disconnect) conn_ctx->on_disconnect(EC_Disconnected, conn_hwnd);
                 if (server->ctx && server->ctx->on_client_disconnect)
                     server->ctx->on_client_disconnect(server->hwnd, conn_hwnd);
                 finish_server_stop(server);
@@ -60,6 +64,7 @@ void setup_server_connect_signals(mqas::core::engine<C>* engine, const std::shar
                 p2p_session_remove_stream(conn_hwnd, sid);
                 if (conn_ctx->on_stream_close) conn_ctx->on_stream_close(conn_hwnd, sid, EC_Ok);
             });
+            if (server->p2p && conn_ctx->on_connect) conn_ctx->on_connect(EC_Ok, conn_hwnd);
             return;
         }
         conn->close();
@@ -93,8 +98,26 @@ GSY_ServerHwnd launch_server_internal(GSY_EngineId engine_id, const char* config
         if (server->stopping) { finish_server_stop(server); return; }
         std::shared_ptr<ServerEngineEntry> created;
         try {
+            const auto mode = server->ctx->mode;
+            if ((mode != GSY_SERVER_MODE_NORMAL && mode != GSY_SERVER_MODE_P2P) ||
+                (mode == GSY_SERVER_MODE_NORMAL && server->ctx->socket)) {
+                fail_server_start(server, EC_Fail);
+                return;
+            }
+            if (mode == GSY_SERVER_MODE_P2P && !server->ctx->socket) {
+                fail_server_start(server, EC_InvalidHandler);
+                return;
+            }
             auto parsed = std::make_shared<toml::value>(toml::parse(path));
             mqas::core::engine_driver::normalize_engine_config(parsed, path.c_str());
+            if (mode == GSY_SERVER_MODE_P2P) {
+                const auto error = start_p2p_server(server, engine_id, path.c_str(), parsed);
+                if (error != EC_Ok) { fail_server_start(server, error); return; }
+                server->started = true;
+                if (server->stopping) { finish_server_stop(server); return; }
+                if (server->ctx->on_started) server->ctx->on_started(EC_Ok, server->hwnd);
+                return;
+            }
             const auto config = toml::find<mqas::core::engine_config>(*parsed, "engine_config");
             sockaddr bind_addr{};
             if (!mqas::io::Ip::str2addr_ipv4(config.bind_ip.c_str(), config.port, bind_addr)) {
