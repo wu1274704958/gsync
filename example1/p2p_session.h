@@ -13,6 +13,7 @@ struct P2PSession {
     P2PSession& operator=(P2PSession&&) = delete;
     std::array<unsigned char, 32> secret{};
     std::array<unsigned char, 16> identity{};
+    std::array<unsigned char, 16> negotiation_id{};
     uint32_t peer_id = 0;
     uint32_t self_id = 0;
     bool is_server = false;

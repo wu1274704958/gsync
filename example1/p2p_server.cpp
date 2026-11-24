@@ -164,8 +164,8 @@ ErrorCode GSY_RegisterServerP2PSession(GSY_ServerHwnd server, GSY_SessionHandle 
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
             const auto [it, inserted] = state.pending.emplace(name, P2PServerState::Pending{handle, session, deadline});
             if (!inserted) error = EC_AlreadyExists;
-            else if (state.refresh_tls()) return EC_Ok;
-            else state.pending.erase(it);
+            else if (state.refresh_tls() && p2p_session_mark_server_registered(handle, session)) return EC_Ok;
+            else { state.pending.erase(it); state.refresh_tls(); }
         }
         p2p_session_release_attempt(handle, session);
         return error;

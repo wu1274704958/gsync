@@ -1,5 +1,13 @@
 # 使用基础 Server 建立直连 P2P
 
+## server 角色偏好
+
+大厅请求方可调用 `GSY_RequestConnectPeerWithPreference`，接受方可调用
+`GSY_RespondPeerConnectRequestWithPreference`，分别选择无偏好、自荐或已有可复用 server。
+两端偏好不同则优先级较高的一端担任 server；相同且非无偏好时由发起方担任；
+双方无偏好时沿用原有按 peer ID 排序的规则。已有 server 是声明，不替代 socket 和配置兼容性检查。
+旧接口等同无偏好，实际角色以 helper 结果的 `is_server` 为准。
+
 接收方先用 lobby 连接的 UDP socket 启动 `GSY_launch_server`。一次启动可以接受多个经过认证的 peer，每次协商只需登记本次会话。主动方调用 `GSY_connect_session`，连接建立后通过 `GSY_ConnectPeerDatagram` 打开业务 stream。
 
 ## 接收方

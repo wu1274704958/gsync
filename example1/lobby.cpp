@@ -21,6 +21,14 @@ ErrorCode GSY_ReleaseP2PSession(GSY_SessionHandle session) {
 
 void init_helper_stream(std::shared_ptr<mqas::tools::p2p::P2PHelperClientStream> helper_stream, GSY_LobbyStreamContext* context, GSY_StreamId stream_id, GSY_ConnectionHwnd owner, std::shared_ptr<GSY_PeerId> self_id);
 
+static void handle_server_ready(GSY_LobbyStreamContext* context, GSY_ConnectionHwnd owner, GSY_StreamId sid,
+    const std::shared_ptr<mqas::tools::proto::p2p::NotifyP2PServerReady>& msg) {
+    if (!msg) return;
+    const auto session = p2p_session_mark_ready(owner, sid, msg->peer_id(), msg->negotiation_id());
+    if (session != GSY_INVALID_SESSION_HANDLE && context->on_p2p_server_ready)
+        context->on_p2p_server_ready(sid, msg->peer_id(), session);
+}
+
 GSY_StreamId GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,const char* psd,GSY_LobbyStreamContext* context)
 {
     if (!context) return INVALID_SID;
@@ -83,6 +91,9 @@ GSY_StreamId GSY_RegisterToLobby(GSY_ConnectionHwnd handle,const char* name,cons
         });
 
         auto lobby_stream = stream->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
+        lobby_stream->on_server_ready.connect([context, handle, stream_id](const auto& msg) {
+            handle_server_ready(context, handle, stream_id, msg);
+        });
         auto self_id = std::make_shared<GSY_PeerId>(0);
         auto init_helper_stream_func = [context,stream_id,handle,self_id](std::shared_ptr<mqas::tools::p2p::P2PHelperClientStream> helper_stream)
         {
@@ -200,17 +211,40 @@ ErrorCode GSY_FetchPeerList(GSY_ConnectionHwnd handle, GSY_StreamId stream_id, G
 ErrorCode GSY_RequestConnectPeer(GSY_ConnectionHwnd handle, GSY_StreamId sid, GSY_PeerId peer_id,
     GSY_RequestId request_id)
 {
+    return GSY_RequestConnectPeerWithPreference(handle, sid, peer_id, GSY_SERVER_NO_PREFERENCE, request_id);
+}
+
+ErrorCode GSY_NotifyP2PServerReady(GSY_ConnectionHwnd handle, GSY_StreamId sid, GSY_SessionHandle session) {
+    std::shared_ptr<const P2PSession> data;
+    const auto error = p2p_session_ready_data(session, handle, sid, data);
+    if (error != EC_Ok) return error;
+    CHECK_CONNECT_VALID(handle)
+    push_task([conn, handle, sid, session, data] {
+        std::shared_ptr<const P2PSession> current;
+        if (p2p_session_ready_data(session, handle, sid, current) != EC_Ok || current != data) return;
+        const auto stream = check_stream_valid<P2PLobbyStreamPair, HolePunchingStream, GSY_LobbyStreamContext, ContextCheckCode>(handle, conn, sid, NONE_RID);
+        if (!stream) return;
+        const auto lobby = stream->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
+        if (lobby) lobby->notify_server_ready(data->peer_id, std::string(reinterpret_cast<const char*>(data->negotiation_id.data()), data->negotiation_id.size()));
+    }, true);
+    return EC_Pending;
+}
+
+ErrorCode GSY_RequestConnectPeerWithPreference(GSY_ConnectionHwnd handle, GSY_StreamId sid, GSY_PeerId peer_id,
+    GSY_ServerPreference preference, GSY_RequestId request_id)
+{
+    if (preference < GSY_SERVER_NO_PREFERENCE || preference > GSY_SERVER_REUSABLE) return EC_Fail;
     CHECK_CONNECT_VALID(handle)
     if (conn->security_info().handshake != mqas::core::HandshakeState::Succeeded ||
         conn->security_info().authentication != mqas::core::PeerAuthentication::CertificatePin) return EC_Fail;
-    push_task([conn,request_id, sid, handle, peer_id]()
+    push_task([conn,request_id, sid, handle, peer_id, preference]()
     {
         const auto stream = check_stream_valid<P2PLobbyStreamPair,
             HolePunchingStream,GSY_LobbyStreamContext,ContextCheckCode>(handle,conn,sid,request_id);
         if (stream)
         {
             const auto s = stream->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
-            s->req_connect(peer_id);
+            s->req_connect(peer_id, static_cast<mqas::tools::proto::p2p::ServerPreference>(preference));
         }
     });
     return EC_Pending;
@@ -219,17 +253,24 @@ ErrorCode GSY_RequestConnectPeer(GSY_ConnectionHwnd handle, GSY_StreamId sid, GS
 ErrorCode GSY_RespondPeerConnectRequest(GSY_ConnectionHwnd handle, GSY_StreamId sid, GSY_PeerId peer_id,
                                                bool accept, GSY_RequestId request_id)
 {
+    return GSY_RespondPeerConnectRequestWithPreference(handle, sid, peer_id, accept, GSY_SERVER_NO_PREFERENCE, request_id);
+}
+
+ErrorCode GSY_RespondPeerConnectRequestWithPreference(GSY_ConnectionHwnd handle, GSY_StreamId sid, GSY_PeerId peer_id,
+                                               bool accept, GSY_ServerPreference preference, GSY_RequestId request_id)
+{
+    if (preference < GSY_SERVER_NO_PREFERENCE || preference > GSY_SERVER_REUSABLE) return EC_Fail;
     CHECK_CONNECT_VALID(handle)
     if (accept && (conn->security_info().handshake != mqas::core::HandshakeState::Succeeded ||
         conn->security_info().authentication != mqas::core::PeerAuthentication::CertificatePin)) return EC_Fail;
-    push_task([conn,request_id, sid, handle, peer_id,accept]()
+    push_task([conn,request_id, sid, handle, peer_id,accept,preference]()
     {
         const auto stream = check_stream_valid<P2PLobbyStreamPair,
             HolePunchingStream,GSY_LobbyStreamContext,ContextCheckCode>(handle,conn,sid,request_id);
         if (stream)
         {
             const auto s = stream->get_holds_stream<mqas::tools::p2p::P2PLobbyClientStream>();
-            s->req_respond(peer_id, accept);
+            s->req_respond(peer_id, accept, static_cast<mqas::tools::proto::p2p::ServerPreference>(preference));
         }
     });
     return EC_Pending;
@@ -275,7 +316,7 @@ void set_result_data(GSY_HelperResult* result,
             msg->peer_addr().ip().size() >= sizeof(result->peer_addr.ip) ||
             msg->peer_addr().ip().find('\0') != std::string::npos ||
             !mqas::io::Ip::str2addr_ipv4(msg->peer_addr().ip().c_str(), static_cast<uint16_t>(msg->peer_addr().port()), peer_address) ||
-            msg->psk_secret().size() != 32 || msg->psk_identity().size() != 16 ||
+            msg->psk_secret().size() != 32 || msg->psk_identity().size() != 16 || msg->negotiation_id().size() != 16 ||
             !msg->psk_issued_at_ms() || msg->psk_expires_at_ms() <= msg->psk_issued_at_ms()) {
             result->ret = EC_Fail;
             return;
@@ -283,6 +324,7 @@ void set_result_data(GSY_HelperResult* result,
         auto credential = std::make_shared<P2PSession>();
         std::memcpy(credential->secret.data(), msg->psk_secret().data(), credential->secret.size());
         std::memcpy(credential->identity.data(), msg->psk_identity().data(), credential->identity.size());
+        std::memcpy(credential->negotiation_id.data(), msg->negotiation_id().data(), credential->negotiation_id.size());
         credential->peer_id = msg->peer_id();
         credential->self_id = self_id;
         credential->is_server = msg->is_server();
@@ -312,6 +354,9 @@ void set_result_data(GSY_HelperResult* result,
 void init_helper_stream(std::shared_ptr<mqas::tools::p2p::P2PHelperClientStream> helper_stream,
     GSY_LobbyStreamContext* context, GSY_StreamId stream_id, GSY_ConnectionHwnd owner, std::shared_ptr<GSY_PeerId> self_id)
 {
+    helper_stream->on_server_ready.connect([context, owner, stream_id](const auto& msg) {
+        handle_server_ready(context, owner, stream_id, msg);
+    });
     helper_stream->on_change_result.connect([context, stream_id](const std::shared_ptr<mqas::tools::proto::p2p::RespondConnectPeer>& msg)
     {
         if (context->on_change_to_helper_result)
@@ -330,6 +375,8 @@ void init_helper_stream(std::shared_ptr<mqas::tools::p2p::P2PHelperClientStream>
             GSY_HelperResult result = {};
             set_result_data(&result,msg,std::move(socket),owner,stream_id,*self_id);
             context->on_helper_quit_result(stream_id, &result);
+            if (result.ret == EC_Ok && p2p_session_take_ready(result.session_handle) && context->on_p2p_server_ready)
+                context->on_p2p_server_ready(stream_id, result.peer_id, result.session_handle);
         }
         auto* secret = msg->mutable_psk_secret();
         if (!secret->empty()) OPENSSL_cleanse(secret->data(), secret->size());

@@ -43,6 +43,8 @@ extern "C" {
        GSY_ReleaseSocket explicitly unregisters the handle. */
     ErrorCode GSYNC_EXTERN GSY_GetConnectionSocket(GSY_ConnectionHwnd, GSY_SocketHandle*);
     ErrorCode GSYNC_EXTERN GSY_ReleaseSocket(GSY_SocketHandle);
+    /* Compares the underlying live sockets, not the opaque handle values. */
+    ErrorCode GSYNC_EXTERN GSY_AreSameSocket(GSY_SocketHandle, GSY_SocketHandle, int* same);
     /* Returns EC_Pending with a reserved connection handle on success. */
     ErrorCode GSYNC_EXTERN GSY_connect_session(const char* config_file, GSY_SessionHandle,
         GSY_BaseConnectionContext*, GSY_ConnectionHwnd*);

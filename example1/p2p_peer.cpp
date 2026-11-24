@@ -171,6 +171,28 @@ bool p2p_peer_credentials(GSY_ConnectionHwnd handle, P2PCredentials& out) {
     return true;
 }
 
+ErrorCode GSY_GetConnectionP2PPeerId(GSY_ConnectionHwnd handle, GSY_PeerId* out) {
+    if (!out) return EC_Fail;
+    *out = INVALID_PID;
+    if (!is_running) return EC_NotInitialized;
+    return push_task_with_result<ErrorCode>([handle, out] {
+        std::shared_ptr<mqas::core::IConnect> conn;
+        {
+            std::lock_guard<std::mutex> lock(connect_mutex);
+            const auto it = connect_map.find(handle);
+            if (it != connect_map.end()) conn = it->second.lock();
+        }
+        if (!conn) return EC_InvalidHandler;
+        const auto security = conn->security_info();
+        if (security.handshake != mqas::core::HandshakeState::Succeeded ||
+            security.authentication != mqas::core::PeerAuthentication::ExternalPsk) return EC_WrongStreamState;
+        const auto result = mqas::comm::locator::inst()->get<std::shared_ptr<Result>>(conn);
+        if (!result || !result->get() || !result->get()->peer_id()) return EC_WrongStreamState;
+        *out = result->get()->peer_id();
+        return EC_Ok;
+    });
+}
+
 bool cancel_pending_p2p_connection(GSY_ConnectionHwnd handle) {
     std::lock_guard lock(peers_mutex);
     const auto it = peer_connections.find(handle);

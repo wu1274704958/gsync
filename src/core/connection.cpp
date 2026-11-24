@@ -62,6 +62,20 @@ ErrorCode GSY_ReleaseSocket(GSY_SocketHandle handle)
     });
 }
 
+ErrorCode GSY_AreSameSocket(GSY_SocketHandle first, GSY_SocketHandle second, int* same)
+{
+    if (!same) return EC_Fail;
+    *same = 0;
+    if (!is_running) return EC_NotInitialized;
+    return push_task_with_result<ErrorCode>([first, second, same] {
+        const auto a = gsy_get_socket(first);
+        const auto b = gsy_get_socket(second);
+        if (!a || !b) return EC_InvalidHandler;
+        *same = a == b ? 1 : 0;
+        return EC_Ok;
+    });
+}
+
 void destroy_connect(const GSY_ConnectionHwnd hwnd) {
     std::shared_ptr<mqas::core::IConnect> conn;
     {

@@ -32,6 +32,8 @@ GSYNC_EXTERN ErrorCode GSY_StartP2PPeer(const char* config_file, GSY_PeerId self
     const GSY_HelperResult* helper, const GSY_P2PPeerContext* context,
     GSY_P2PPeerHandle* peer);
 GSYNC_EXTERN ErrorCode GSY_CloseP2PPeer(GSY_P2PPeerHandle peer);
+/* Available after an authenticated P2P connection has been accepted. */
+GSYNC_EXTERN ErrorCode GSY_GetConnectionP2PPeerId(GSY_ConnectionHwnd connection, GSY_PeerId* peer);
 
 #ifdef __cplusplus
 }
