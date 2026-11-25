@@ -128,3 +128,7 @@ endif()
 add_executable(test_direct_stream_registry test_direct_stream_registry.cpp)
 target_link_libraries(test_direct_stream_registry PRIVATE mqas)
 add_test(NAME direct_stream_registry COMMAND test_direct_stream_registry)
+
+add_executable(test_engine_stages test_engine_stages.cpp)
+target_include_directories(test_engine_stages PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME engine_stages COMMAND test_engine_stages)

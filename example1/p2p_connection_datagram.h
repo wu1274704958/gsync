@@ -33,6 +33,11 @@ typedef struct GSYNC_EXTERN GSY_P2PDatagramConnectionContext
 // Completion runs on the SDK I/O thread, possibly before this function returns.
 // The context must remain alive until the connection and its callbacks end.
 typedef void (*GSY_DatagramStreamCreated)(ErrorCode, GSY_StreamId, GSY_RequestId, void*);
+/* Creates a direct datagram stream on an authenticated connection. The callback
+ * runs exactly once for an accepted request and may run before return. The
+ * context remains valid until the stream and all its callbacks have ended. */
+ErrorCode GSYNC_EXTERN GSY_MakePeerDatagramStream(GSY_ConnectionHwnd, GSY_P2PStreamId,
+    GSY_P2PDatagramConnectionContext*, GSY_RequestId, GSY_DatagramStreamCreated, void*);
 ErrorCode GSYNC_EXTERN GSY_ConnectPeerDatagram(GSY_ConnectionHwnd handle, GSY_PeerId, GSY_P2PStreamId local_stream_id,
     GSY_P2PDatagramConnectionContext*,GSY_RequestId, GSY_DatagramStreamCreated, void*);
 // Only established streams are visible. Identifiers are scoped to the connection.

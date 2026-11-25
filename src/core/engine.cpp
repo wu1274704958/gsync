@@ -41,6 +41,7 @@ int GSY_initialize(int flag,GSY_Context* cxt)
     global_context = cxt;
     main_thread = std::make_unique<std::thread>(mian_func);
     waiting_for_context_initialized();
+    initialize_outbound_connections();
     p2p_peers_initialize();
     return EC_Ok;
 }
@@ -52,6 +53,7 @@ int GSY_terminate()
     if (main_thread && std::this_thread::get_id() == main_thread->get_id())
         return EC_Fail;
     { std::lock_guard lock(server_mutex); server_shutting_down = true; }
+    shutdown_outbound_connections();
     p2p_peers_shutdown();
     push_task_with_result<int>([] { shutdown_server_engines(); return 0; }, true);
     wait_for_server_shutdown();

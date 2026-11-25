@@ -3,6 +3,8 @@
 #include <cstring>
 #include "def.h"
 #include "../common.h"
+#include "connection_events.hpp"
+#include "engine_stages.hpp"
 #include "core/server.h"
 #include "mqas/core/engine.h"
 #include "mqas/core/engine_driver.h"
@@ -10,9 +12,41 @@
 #include "mqas/io/ip.h"
 #include "mqas/comm/locator.h"
 
+namespace gsync::stages {
+struct ServerPrepare {
+    std::shared_ptr<ServerEntry> server;
+    GSY_EngineId engine_id;
+    const toml::value& config;
+    sockaddr& address;
+    std::shared_ptr<mqas::io::UdpSocket>& socket;
+    std::shared_ptr<const mqas::core::TlsConfiguration>& tls;
+    bool& address_ready;
+    bool& allow_shared_endpoint;
+};
+struct ServerReuse {
+    std::shared_ptr<ServerEntry> server;
+    std::shared_ptr<ServerEngineEntry> owner;
+    mqas::core::EngineSettingsView& running;
+};
+struct ServerEngineReady {
+    std::shared_ptr<ServerEntry> server;
+    std::shared_ptr<ServerEngineEntry> owner;
+    const std::shared_ptr<mqas::io::UdpSocket>& socket;
+    const toml::value& config;
+};
+struct ServerIncoming {
+    std::shared_ptr<ServerEntry> server;
+    std::shared_ptr<mqas::core::IConnect> connection;
+    GSY_ConnectionHwnd handle = InvalidConnection;
+    bool notify_connected = false;
+};
+struct ServerCleanup { std::shared_ptr<ServerEntry> server; };
+
+}
+
 extern bool server_shutting_down;
 
-template<typename C>
+template<GSY_EngineId Id, typename Config, typename C>
 void setup_server_connect_signals(mqas::core::engine<C>* engine, const std::shared_ptr<ServerEngineEntry>& owner)
 {
     std::weak_ptr<ServerEngineEntry> weak_owner = owner;
@@ -24,7 +58,8 @@ void setup_server_connect_signals(mqas::core::engine<C>* engine, const std::shar
         if (!entry) { conn->close(); return; }
         for (const auto& server : entry->servers) {
             if (server->stopping || !server->ctx || !server->ctx->on_client_connect) continue;
-            if (server->p2p && !authenticate_p2p_server(server, conn)) break;
+            gsync::stages::ServerIncoming incoming{server, conn};
+            if (gsync::stages::run<gsync::stages::Server::Authenticate, Id, Config>(incoming) != EC_Ok) continue;
             const auto conn_hwnd = get_new_connection_hwnd(server->hwnd + SERVER_ENGINE_ID_OFFSET);
             if (conn_hwnd == InvalidConnection) {
                 if (server->ctx->on_error) server->ctx->on_error(EC_ConnectOverLimit, server->hwnd);
@@ -36,19 +71,20 @@ void setup_server_connect_signals(mqas::core::engine<C>* engine, const std::shar
                 recycle_connection_hwnd(conn_hwnd);
                 continue;
             }
+            incoming.handle = conn_hwnd;
+            const auto accepted = gsync::stages::run<gsync::stages::Server::Accepted, Id, Config>(incoming);
+            if (accepted != EC_Ok) { recycle_connection_hwnd(conn_hwnd); conn->close(); return; }
             {
                 std::lock_guard lock(connect_mutex);
                 connect_map.insert({conn_hwnd, conn});
             }
             server->connections.emplace(conn_hwnd, conn);
             conn->set_connection_config(server->config);
-            conn->set_cxt(conn_ctx);
-            if (server->p2p) attach_p2p_server_stream_policy(server, conn, conn_hwnd);
+            setup_base_stream_events(*conn, conn_hwnd, conn_ctx);
             conn->on_close_signal.connect([server, conn_hwnd, conn_ctx](mqas::core::IConnect&) {
-                p2p_session_remove_connection(conn_hwnd);
                 destroy_connect(conn_hwnd);
                 server->connections.erase(conn_hwnd);
-                if (server->p2p && conn_ctx->on_disconnect) conn_ctx->on_disconnect(EC_Disconnected, conn_hwnd);
+                if (conn_ctx->on_disconnect) conn_ctx->on_disconnect(EC_Disconnected, conn_hwnd);
                 if (server->ctx && server->ctx->on_client_disconnect)
                     server->ctx->on_client_disconnect(server->hwnd, conn_hwnd);
                 finish_server_stop(server);
@@ -56,27 +92,19 @@ void setup_server_connect_signals(mqas::core::engine<C>* engine, const std::shar
             conn->on_hsk_done_signal.connect([conn_hwnd, conn_ctx](mqas::core::IConnect&, ::lsquic_hsk_status status) {
                 if (status == LSQ_HSK_OK && conn_ctx->on_connect) conn_ctx->on_connect(EC_Ok, conn_hwnd);
             });
-            if (conn_ctx->on_stream_open) conn->on_new_stream_signal.connect([conn_hwnd, conn_ctx](std::shared_ptr<mqas::core::IStream> stream) {
-                conn_ctx->on_stream_open(conn_hwnd, reinterpret_cast<GSY_StreamId>(stream->get_origin()), EC_Ok);
-            });
-            conn->on_stream_close_signal.connect([conn_hwnd, conn_ctx](std::shared_ptr<mqas::core::IStream> stream) {
-                const auto sid = reinterpret_cast<GSY_StreamId>(stream->get_origin());
-                p2p_session_remove_stream(conn_hwnd, sid);
-                if (conn_ctx->on_stream_close) conn_ctx->on_stream_close(conn_hwnd, sid, EC_Ok);
-            });
-            if (server->p2p && conn_ctx->on_connect) conn_ctx->on_connect(EC_Ok, conn_hwnd);
+            if (incoming.notify_connected && conn_ctx->on_connect) conn_ctx->on_connect(EC_Ok, conn_hwnd);
             return;
         }
         conn->close();
     });
 }
 
-template<size_t I, typename TU>
+template<size_t I, typename TU, typename Config>
 requires std::is_base_of_v<mqas::core::engine_base_interface, std::tuple_element_t<I, TU>>
 GSY_ServerHwnd launch_server_internal(GSY_EngineId engine_id, const char* config_file, GSY_BaseServerContext* ctx)
 {
     if (engine_id - 1 != I) {
-        if constexpr (I + 1 < std::tuple_size_v<TU>) return launch_server_internal<I + 1, TU>(engine_id, config_file, ctx);
+        if constexpr (I + 1 < std::tuple_size_v<TU>) return launch_server_internal<I + 1, TU, Config>(engine_id, config_file, ctx);
         if (ctx && ctx->on_error) ctx->on_error(EC_EngineNotMatch, InvalidServer);
         return InvalidServer;
     }
@@ -84,6 +112,15 @@ GSY_ServerHwnd launch_server_internal(GSY_EngineId engine_id, const char* config
     using EngineType = std::tuple_element_t<I, TU>;
     auto server = std::make_shared<ServerEntry>();
     server->ctx = ctx;
+    server->cleanup = [](const auto& entry) {
+        gsync::stages::ServerCleanup frame{entry};
+        gsync::stages::run<gsync::stages::Server::Cleanup, I + 1, Config>(frame);
+    };
+    using Descriptor = typename gsync::stages::Lookup<I + 1, Config>::type;
+    if (ctx->options && std::is_void_v<typename Descriptor::option_type>) return InvalidServer;
+    gsync::stages::ServerStart frame{ctx, server};
+    if (gsync::stages::run<gsync::stages::Server::Validate, I + 1, Config>(frame) != EC_Ok)
+        return InvalidServer;
     {
         std::lock_guard lock(server_mutex);
         if (server_shutting_down || !is_running) return InvalidServer;
@@ -98,57 +135,55 @@ GSY_ServerHwnd launch_server_internal(GSY_EngineId engine_id, const char* config
         if (server->stopping) { finish_server_stop(server); return; }
         std::shared_ptr<ServerEngineEntry> created;
         try {
-            const auto mode = server->ctx->mode;
-            if ((mode != GSY_SERVER_MODE_NORMAL && mode != GSY_SERVER_MODE_P2P) ||
-                (mode == GSY_SERVER_MODE_NORMAL && server->ctx->socket)) {
-                fail_server_start(server, EC_Fail);
-                return;
-            }
-            if (mode == GSY_SERVER_MODE_P2P && !server->ctx->socket) {
-                fail_server_start(server, EC_InvalidHandler);
-                return;
-            }
             auto parsed = std::make_shared<toml::value>(toml::parse(path));
             mqas::core::engine_driver::normalize_engine_config(parsed, path.c_str());
-            if (mode == GSY_SERVER_MODE_P2P) {
-                const auto error = start_p2p_server(server, engine_id, path.c_str(), parsed);
-                if (error != EC_Ok) { fail_server_start(server, error); return; }
-                server->started = true;
-                if (server->stopping) { finish_server_stop(server); return; }
-                if (server->ctx->on_started) server->ctx->on_started(EC_Ok, server->hwnd);
-                return;
-            }
-            const auto config = toml::find<mqas::core::engine_config>(*parsed, "engine_config");
             sockaddr bind_addr{};
-            if (!mqas::io::Ip::str2addr_ipv4(config.bind_ip.c_str(), config.port, bind_addr)) {
-                fail_server_start(server, EC_InvalidAddress); return;
+            std::shared_ptr<mqas::io::UdpSocket> socket;
+            std::shared_ptr<const mqas::core::TlsConfiguration> tls;
+            bool address_ready = false;
+            bool allow_shared_endpoint = false;
+            gsync::stages::ServerPrepare prepare{server, engine_id, *parsed, bind_addr, socket, tls,
+                address_ready, allow_shared_endpoint};
+            const auto prepare_error = gsync::stages::run<gsync::stages::Server::BeforeEngine, I + 1, Config>(prepare);
+            if (prepare_error != EC_Ok) { fail_server_start(server, prepare_error); return; }
+            if (!address_ready) {
+                const auto config = toml::find<mqas::core::engine_config>(*parsed, "engine_config");
+                if (!mqas::io::Ip::str2addr_ipv4(config.bind_ip.c_str(), config.port, bind_addr)) {
+                    fail_server_start(server, EC_InvalidAddress); return;
+                }
             }
-            EngineKey key{engine_id, mqas::io::Ip::addr2str_ipv4(bind_addr), config.port};
+            const auto port = mqas::io::Ip::addr_get_port(bind_addr);
+            EngineKey key{engine_id, mqas::io::Ip::addr2str_ipv4(bind_addr), port};
             std::shared_ptr<ServerEngineEntry> owner;
-            if (config.port != 0) {
+            if (port != 0) {
                 if (auto it = server_engines.find(key); it != server_engines.end()) {
                     owner = it->second;
                     auto* engine = dynamic_cast<EngineType*>(owner->engine);
                     if (!engine) { fail_server_start(server, EC_EngineNotMatch); return; }
                     ::lsquic_engine_settings storage{};
                     const auto candidate = mqas::core::prepare_engine_settings(*parsed, mqas::core::EngineFlags::Server, bind_addr, storage);
-                    if (engine->get_settings_hash() != mqas::core::EngineSettingsHasher{}(candidate) || engine->get_settings_view() != candidate) {
+                    auto running = engine->get_settings_view();
+                    gsync::stages::ServerReuse reuse{server, owner, running};
+                    const auto reuse_error = gsync::stages::run<gsync::stages::Server::Reuse, I + 1, Config>(reuse);
+                    if (reuse_error != EC_Ok) { fail_server_start(server, reuse_error); return; }
+                    const auto running_hash = mqas::core::EngineSettingsHasher{}(running);
+                    if (running_hash != mqas::core::EngineSettingsHasher{}(candidate) || running != candidate) {
                         fail_server_start(server, EC_EngineConfigMismatch); return;
                     }
                 } else if (server_endpoint_overlaps(bind_addr)) {
                     fail_server_start(server, EC_AlreadyExists); return;
                 }
-                for (const auto& [existing, entry] : engine_map)
+                if (!allow_shared_endpoint) for (const auto& [existing, entry] : engine_map)
                     if (mqas::core::bind_endpoints_overlap(reinterpret_cast<const sockaddr&>(entry->bind_addr), bind_addr)) {
                         fail_server_start(server, EC_AlreadyExists); return;
                     }
             }
             if (!owner) {
                 auto engine = std::make_unique<EngineType>(*io_cxt);
-                engine->init(*parsed, path.c_str(), mqas::core::EngineFlags::Server);
+                engine->init(*parsed, path.c_str(), mqas::core::EngineFlags::Server, socket, std::move(tls));
                 key.port = mqas::io::Ip::addr_get_port(engine->get_local_addr());
                 if (server_endpoint_overlaps(engine->get_local_addr())) { fail_server_start(server, EC_AlreadyExists); return; }
-                for (const auto& [existing, entry] : engine_map)
+                if (!allow_shared_endpoint) for (const auto& [existing, entry] : engine_map)
                     if (mqas::core::bind_endpoints_overlap(reinterpret_cast<const sockaddr&>(entry->bind_addr), engine->get_local_addr())) {
                         fail_server_start(server, EC_AlreadyExists); return;
                     }
@@ -156,12 +191,19 @@ GSY_ServerHwnd launch_server_internal(GSY_EngineId engine_id, const char* config
                 owner->key = key;
                 std::memcpy(&owner->bind_addr, &engine->get_local_addr(), sizeof(sockaddr_in));
                 owner->engine = engine.get();
-                setup_server_connect_signals(engine->get_engine().get(), owner);
+                gsync::stages::ServerEngineReady initialized{server, owner, socket, *parsed};
+                const auto init_error = gsync::stages::run<gsync::stages::Server::InitEngine, I + 1, Config>(initialized);
+                if (init_error != EC_Ok) { fail_server_start(server, init_error); return; }
+                setup_server_connect_signals<I + 1, Config>(engine->get_engine().get(), owner);
                 server_engines.emplace(key, owner);
                 created = owner;
                 auto* running_engine = engine.release();
                 running_engine->start_recv();
                 running_engine->process_conns();
+            } else {
+                gsync::stages::ServerEngineReady reused{server, owner, socket, *parsed};
+                const auto error = gsync::stages::run<gsync::stages::Server::InitEngine, I + 1, Config>(reused);
+                if (error != EC_Ok) { fail_server_start(server, error); return; }
             }
             server->config = std::move(parsed);
             server->owner = owner;
@@ -180,7 +222,7 @@ GSY_ServerHwnd launch_server_internal(GSY_EngineId engine_id, const char* config
     }, true);
     return server->hwnd;
 }
-#define GSY_TEMPLATE_BY_ENGINE_TYPE_FOR_SERVER(ET) \
+#define GSY_TEMPLATE_BY_ENGINE_TYPE_FOR_SERVER(ET, CT) \
 GSY_ServerHwnd GSYNC_EXTERN GSY_launch_server(GSY_EngineId engine_id, const char* config_file, GSY_BaseServerContext* cxt) { \
-    return launch_server_internal<0, ET>(engine_id, config_file, cxt); \
+    return launch_server_internal<0, ET, CT>(engine_id, config_file, cxt); \
 }

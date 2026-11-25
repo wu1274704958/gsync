@@ -10,6 +10,7 @@ namespace p2p = mqas::tools::p2p;
 
 struct P2PServerState {
     struct Pending {
+        GSY_ServerHwnd owner;
         GSY_SessionHandle handle;
         std::shared_ptr<const P2PSession> session;
         std::chrono::steady_clock::time_point deadline;
@@ -33,66 +34,73 @@ struct P2PServerState {
     }
 };
 
-ErrorCode start_p2p_server(const std::shared_ptr<ServerEntry>& server, GSY_EngineId engine_id,
-    const char* path, std::shared_ptr<const toml::value> config)
+ErrorCode prepare_p2p_server(const std::shared_ptr<ServerEntry>& server, GSY_EngineId engine_id,
+    const toml::value& config, sockaddr& address, std::shared_ptr<mqas::io::UdpSocket>& socket,
+    std::shared_ptr<const mqas::core::TlsConfiguration>& tls)
 {
     if (engine_id != 2) return EC_EngineNotMatch;
-    auto state = std::make_shared<P2PServerState>();
-    state->socket = gsy_get_socket(server->ctx->socket);
-    if (!state->socket) return EC_InvalidHandler;
-    sockaddr address{};
-    state->socket->get_sock_addr(address);
+    socket = gsy_get_socket(server->socket);
+    if (!socket) return EC_InvalidHandler;
+    socket->get_sock_addr(address);
     if (address.sa_family != AF_INET) return EC_InvalidAddress;
-    if (server_endpoint_overlaps(address)) return EC_AlreadyExists;
-    state->alpn = toml::find<std::string>(*config, "engine_config", "alpn");
-    auto tls = p2p::make_psk_server_context({}, state->alpn);
-    if (!tls) return EC_ConnectFailed;
-    auto engine = std::make_unique<P2PDatagramEngine>(*io_cxt);
-    engine->init(*config, path, mqas::core::EngineFlags::Server, state->socket, std::move(tls));
-    state->engine = engine.get();
-    auto owner = std::make_shared<ServerEngineEntry>();
-    owner->key = {engine_id, mqas::io::Ip::addr2str_ipv4(address), mqas::io::Ip::addr_get_port(address)};
-    std::memcpy(&owner->bind_addr, &address, sizeof(sockaddr_in));
-    owner->engine = engine.get();
-    owner->servers.push_back(server);
-    setup_server_connect_signals(engine->get_engine().get(), owner);
+    tls = p2p::make_psk_server_context({}, toml::find<std::string>(config, "engine_config", "alpn"));
+    return tls ? EC_Ok : EC_ConnectFailed;
+}
+
+ErrorCode attach_p2p_server_engine(const std::shared_ptr<ServerEntry>& server,
+    const std::shared_ptr<ServerEngineEntry>& owner, const std::shared_ptr<mqas::io::UdpSocket>& socket,
+    const toml::value& config)
+{
+    if (owner->p2p) {
+        if (owner->p2p->socket != socket) return EC_AlreadyExists;
+        server->p2p = owner->p2p;
+        return EC_Ok;
+    }
+    auto state = std::make_shared<P2PServerState>();
+    state->socket = socket;
+    state->alpn = toml::find<std::string>(config, "engine_config", "alpn");
+    state->engine = static_cast<P2PDatagramEngine*>(owner->engine);
     state->timer = io_cxt->make_shared<mqas::io::Timer>();
-    std::weak_ptr<ServerEntry> weak = server;
+    std::weak_ptr<ServerEngineEntry> weak = owner;
     state->timer->start([weak](mqas::io::Timer*) {
-        auto owner = weak.lock();
-        if (!owner || owner->stopping || !owner->p2p) return;
-        auto& state = *owner->p2p;
-        bool expired = false;
+        auto entry = weak.lock();
+        if (!entry || !entry->p2p) return;
+        auto& state = *entry->p2p;
+        std::vector<std::shared_ptr<ServerEntry>> expired;
+        bool changed = false;
         for (auto it = state.pending.begin(); it != state.pending.end();) {
             if (it->second.session->valid_now() && std::chrono::steady_clock::now() < it->second.deadline) {
                 ++it;
                 continue;
             }
+            for (const auto& server : entry->servers)
+                if (server->hwnd == it->second.owner && !server->stopping) expired.push_back(server);
             p2p_session_release_attempt(it->second.handle, it->second.session);
             it = state.pending.erase(it);
-            expired = true;
+            changed = true;
         }
-        if (expired) {
-            state.refresh_tls();
-            if (owner->ctx->on_error) owner->ctx->on_error(EC_Timeout, owner->hwnd);
-        }
+        if (changed) state.refresh_tls();
+        for (const auto& server : expired)
+            if (!server->stopping && server->ctx->on_error) server->ctx->on_error(EC_Timeout, server->hwnd);
     }, 250, 250);
-    engine->start_recv();
-    engine->process_conns();
-    server_engines.emplace(owner->key, owner);
-    server->config = std::move(config);
-    server->owner = owner;
+    owner->p2p = state;
     server->p2p = std::move(state);
-    engine.release();
     return EC_Ok;
 }
 
 void stop_p2p_server(const std::shared_ptr<ServerEntry>& server) {
     if (!server->p2p) return;
     auto state = std::exchange(server->p2p, {});
-    if (state->timer->is_start()) state->timer->stop();
-    for (const auto& [name, entry] : state->pending)
-        p2p_session_release_attempt(entry.handle, entry.session);
+    bool removed = false;
+    for (auto it = state->pending.begin(); it != state->pending.end();) {
+        if (it->second.owner != server->hwnd) { ++it; continue; }
+        p2p_session_release_attempt(it->second.handle, it->second.session);
+        it = state->pending.erase(it);
+        removed = true;
+    }
+    if (removed) state->refresh_tls();
+    if (auto owner = server->owner.lock(); owner && owner->servers.size() == 1)
+        state->timer->stop();
 }
 
 bool authenticate_p2p_server(const std::shared_ptr<ServerEntry>& server,
@@ -106,7 +114,7 @@ bool authenticate_p2p_server(const std::shared_ptr<ServerEntry>& server,
     if (!name) return false;
     auto& state = *server->p2p;
     const auto it = state.pending.find(name);
-    if (it == state.pending.end() || !it->second.session->valid_now() ||
+    if (it == state.pending.end() || it->second.owner != server->hwnd || !it->second.session->valid_now() ||
         std::chrono::steady_clock::now() >= it->second.deadline) return false;
     const auto session = it->second.session;
     const auto handle = it->second.handle;
@@ -132,9 +140,9 @@ void attach_p2p_server_stream_policy(const std::shared_ptr<ServerEntry>& server,
         [weak, handle](void* stream, GSY_P2PStreamId remote, GSY_P2PStreamId& local, std::string& reason) {
             const auto server = weak.lock();
             if (!server || server->stopping) { reason = "server is stopping"; return false; }
-            if (!server->ctx->on_p2p_stream_request) return true;
+            if (!server->stream_policy) return true;
             const char* text = nullptr;
-            const auto accepted = server->ctx->on_p2p_stream_request(server->hwnd, handle,
+            const auto accepted = server->stream_policy(server->hwnd, handle,
                 reinterpret_cast<GSY_StreamId>(stream), remote, &local, &text);
             if (text) reason = text;
             return accepted != 0 && !server->stopping;
@@ -162,7 +170,7 @@ ErrorCode GSY_RegisterServerP2PSession(GSY_ServerHwnd server, GSY_SessionHandle 
         else if (session->is_server && state.socket == socket) {
             const auto name = p2p::psk_server_name(session->identity);
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-            const auto [it, inserted] = state.pending.emplace(name, P2PServerState::Pending{handle, session, deadline});
+            const auto [it, inserted] = state.pending.emplace(name, P2PServerState::Pending{server, handle, session, deadline});
             if (!inserted) error = EC_AlreadyExists;
             else if (state.refresh_tls() && p2p_session_mark_server_registered(handle, session)) return EC_Ok;
             else { state.pending.erase(it); state.refresh_tls(); }
@@ -179,7 +187,7 @@ ErrorCode GSY_CancelServerP2PSession(GSY_ServerHwnd server, GSY_SessionHandle ha
         if (!owner) return EC_InvalidHandler;
         auto& state = *owner->p2p;
         for (auto it = state.pending.begin(); it != state.pending.end(); ++it) {
-            if (it->second.handle != handle) continue;
+            if (it->second.handle != handle || it->second.owner != server) continue;
             p2p_session_release_attempt(handle, it->second.session);
             state.pending.erase(it);
             return state.refresh_tls() ? EC_Ok : EC_ConnectFailed;

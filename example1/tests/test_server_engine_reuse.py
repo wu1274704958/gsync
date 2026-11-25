@@ -13,8 +13,9 @@ ERR = c.CFUNCTYPE(None, c.c_char_p, I); EVENT = c.CFUNCTYPE(None, I, U)
 START = c.CFUNCTYPE(None, I, U); DIS = c.CFUNCTYPE(None, U, U); ACCEPT = c.CFUNCTYPE(P, U, U)
 STREAM = c.CFUNCTYPE(None, U, c.c_uint64, I)
 class Global(c.Structure): _fields_ = [('error', ERR)]
-class Connection(c.Structure): _fields_ = [('connect', EVENT), ('disconnect', EVENT), ('error', EVENT), ('open', STREAM), ('close', STREAM), ('extra', P)]
-class Server(c.Structure): _fields_ = [('started', START), ('stopped', START), ('error', EVENT), ('accept', ACCEPT), ('disconnect', DIS), ('extra', P), ('p2p_request', P), ('socket', c.c_uint64), ('mode', I)]
+class Connection(c.Structure): _fields_ = [('connect', EVENT), ('disconnect', EVENT), ('error', EVENT), ('open', STREAM), ('close', STREAM), ('extra', P),('options',P)]
+class P2PServerOptions(c.Structure): _fields_ = [('type', U), ('size', U), ('socket', c.c_uint64), ('policy', P)]
+class Server(c.Structure): _fields_ = [('started', START), ('stopped', START), ('error', EVENT), ('accept', ACCEPT), ('disconnect', DIS), ('extra', P), ('options', P)]
 lib.GSY_initialize.argtypes = [I, c.POINTER(Global)]; lib.GSY_initialize.restype = I
 lib.GSY_launch_server.argtypes = [U, c.c_char_p, c.POINTER(Server)]; lib.GSY_launch_server.restype = U
 lib.GSY_stop_server.argtypes = [U]; lib.GSY_stop_server.restype = I
@@ -131,12 +132,9 @@ def run():
         expired_socket, unrelated_socket = c.c_uint64(), c.c_uint64()
         assert lib.GSY_GetConnectionSocket(ch, c.byref(expired_socket)) == 0
         assert lib.GSY_GetConnectionSocket(ch, c.byref(unrelated_socket)) == 0
-        bad_mode = server_ctx('normal-with-socket', False)
-        bad_mode.socket = expired_socket.value
-        assert lib.GSY_launch_server(2, path, c.byref(bad_mode))
-        wait(lambda: ('normal-with-socket', 'error', -1) in [e[:3] for e in events], 'normal mode rejects a socket')
         no_socket = server_ctx('p2p-without-socket', False)
-        no_socket.mode = 1
+        no_socket_options = P2PServerOptions(2, c.sizeof(P2PServerOptions), 0, None)
+        no_socket.options = c.addressof(no_socket_options)
         assert lib.GSY_launch_server(2, path, c.byref(no_socket))
         wait(lambda: ('p2p-without-socket', 'error', 1006) in [e[:3] for e in events], 'P2P mode requires a socket')
         assert any(e[:2]==('a','accept') for e in events)
@@ -150,8 +148,8 @@ def run():
         assert lib.GSY_disconnect(ch) in (0, 1006)
         wait(lambda: ('client_disconnected', 1005, ch) in events, 'client socket owner disconnected')
         stale = server_ctx('stale-socket', False)
-        stale.socket = expired_socket.value
-        stale.mode = 1
+        stale_options = P2PServerOptions(2, c.sizeof(P2PServerOptions), expired_socket.value, None)
+        stale.options = c.addressof(stale_options)
         assert lib.GSY_launch_server(2, path, c.byref(stale))
         wait(lambda: any(e[:3] == ('stale-socket', 'error', 1006) for e in events), 'expired socket rejected')
         assert lib.GSY_ReleaseSocket(expired_socket) == 1006

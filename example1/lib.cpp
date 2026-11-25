@@ -7,9 +7,21 @@
 #include "mqas/tools/stream/p2p_helper_client.h"
 #include "../src/common.h"
 #include "lib.hpp"
+#include "engine_stages.hpp"
 
 
-GSY_DEFINE_ENGINE_TYPE(AllEngineType)
+GSY_DEFINE_ENGINE_TYPE(AllEngineType, gsync::stages::ConnectConfig, gsync::stages::ServerConfig)
+
+ErrorCode GSY_connect_session(const char* config_file, GSY_SessionHandle session,
+    GSY_BaseConnectionContext* context, GSY_ConnectionHwnd* out_connection)
+{
+    if (out_connection) *out_connection = InvalidConnection;
+    if (!is_running) return EC_NotInitialized;
+    if (!out_connection) return EC_Fail;
+    const GSY_P2PConnectOptions options{{GSY_CONTEXT_P2P_CONNECT, sizeof(GSY_P2PConnectOptions)}, session};
+    return gsync::stages::connect_internal<0, AllEngineType, gsync::stages::ConnectConfig>(
+        2, config_file, nullptr, 0, context, &options.header, *out_connection);
+}
 
 ErrorCode mapping_ret_code(mqas::tools::proto::p2p::RetCode ret_code)
 {

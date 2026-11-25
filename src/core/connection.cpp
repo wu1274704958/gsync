@@ -1,6 +1,7 @@
 #include "core/connection.h"
 #include <memory>
 #include <utility>
+#include <condition_variable>
 #include <mqas/io/context.h>
 #include <mqas/io/udp.h>
 
@@ -76,7 +77,8 @@ ErrorCode GSY_AreSameSocket(GSY_SocketHandle first, GSY_SocketHandle second, int
     });
 }
 
-void destroy_connect(const GSY_ConnectionHwnd hwnd) {
+void destroy_connect(const GSY_ConnectionHwnd hwnd, bool recycle) {
+    p2p_session_remove_connection(hwnd);
     std::shared_ptr<mqas::core::IConnect> conn;
     {
         std::lock_guard<std::mutex> lock(connect_mutex);
@@ -90,7 +92,7 @@ void destroy_connect(const GSY_ConnectionHwnd hwnd) {
         connection_engines.erase(owner);
         push_task([entry] { cleanup_connection_engine(entry); }, true);
     }
-    recycle_connection_hwnd(hwnd);
+    if (recycle) recycle_connection_hwnd(hwnd);
     if (conn && !conn->is_closed()) conn->close();
 }
 
@@ -110,8 +112,56 @@ void push_destroy_connect_task(GSY_ConnectionHwnd hwnd) {
     }, true);
 }
 
+namespace {
+std::mutex outbound_mutex;
+std::condition_variable outbound_empty;
+std::unordered_map<GSY_ConnectionHwnd, std::function<void()>> outbound_connections;
+bool accepting_outbound = false;
+}
+
+void initialize_outbound_connections() {
+    std::lock_guard lock(outbound_mutex);
+    accepting_outbound = true;
+}
+
+bool register_outbound_connection(GSY_ConnectionHwnd handle, std::function<void()> cancel) {
+    std::lock_guard lock(outbound_mutex);
+    return accepting_outbound && outbound_connections.emplace(handle, std::move(cancel)).second;
+}
+
+void unregister_outbound_connection(GSY_ConnectionHwnd handle) {
+    {
+        std::lock_guard lock(outbound_mutex);
+        outbound_connections.erase(handle);
+        recycle_connection_hwnd(handle);
+    }
+    outbound_empty.notify_all();
+}
+
+void shutdown_outbound_connections() {
+    std::vector<std::function<void()>> cancels;
+    {
+        std::lock_guard lock(outbound_mutex);
+        accepting_outbound = false;
+        for (const auto& [handle, cancel] : outbound_connections) cancels.push_back(cancel);
+    }
+    for (const auto& cancel : cancels) push_task(cancel, true);
+    std::unique_lock lock(outbound_mutex);
+    outbound_empty.wait(lock, [] { return outbound_connections.empty(); });
+}
+
 int GSY_disconnect(GSY_ConnectionHwnd handler)
 {
+    std::function<void()> cancel;
+    {
+        std::lock_guard lock(outbound_mutex);
+        const auto it = outbound_connections.find(handler);
+        if (it != outbound_connections.end()) cancel = it->second;
+    }
+    if (cancel) {
+        push_task(cancel, true);
+        return EC_Ok;
+    }
     {
         std::lock_guard lock(connect_mutex);
         if (connect_map.contains(handler)) {
@@ -119,7 +169,7 @@ int GSY_disconnect(GSY_ConnectionHwnd handler)
             return EC_Ok;
         }
     }
-    return cancel_pending_p2p_connection(handler) ? EC_Ok : EC_InvalidHandler;
+    return EC_InvalidHandler;
 }
 
 
@@ -133,20 +183,18 @@ int GSY_is_connected(unsigned int handler)
         std::atomic_bool completed = false;
         std::atomic_bool result = false;
         push_task([&completed,&result,handler]() {
-            bool expired = false;
             {
                 std::lock_guard<std::mutex> lock(connect_mutex);
                 const auto it = connect_map.find(handler);
                 if (it == connect_map.end()) {
                     result.store(false, std::memory_order::release);
                 } else if (const auto conn = it->second.lock()) {
-                    result.store(conn->get_hsk_status() == ::lsquic_hsk_status::LSQ_HSK_OK, std::memory_order::release);
+                    result.store(!conn->is_closed() && conn->security_info().handshake == mqas::core::HandshakeState::Succeeded,
+                        std::memory_order::release);
                 } else {
                     result.store(false, std::memory_order::release);
-                    expired = true;
                 }
             }
-            if (expired) destroy_connect(handler);
             completed.store(true, std::memory_order::release);
         });
         connect_mutex.unlock();

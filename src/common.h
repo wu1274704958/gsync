@@ -15,7 +15,7 @@
 #include <atomic>
 #include <vector>
 #include <memory>
-#include "core/server.h"
+#include "core/p2p_context.h"
 #include "def.h"
 #include "uv.h"
 #include "core/engine.h"
@@ -57,8 +57,12 @@ extern uv_async_t async_task_handle;
 
 extern GSY_ConnectionHwnd get_new_connection_hwnd(GSY_EngineId);
 extern void recycle_connection_hwnd(GSY_ConnectionHwnd);
-extern void destroy_connect(GSY_ConnectionHwnd);
+extern void destroy_connect(GSY_ConnectionHwnd, bool recycle = true);
 extern void cleanup_connection_engine(std::weak_ptr<EngineEntry>);
+bool register_outbound_connection(GSY_ConnectionHwnd, std::function<void()> cancel);
+void unregister_outbound_connection(GSY_ConnectionHwnd);
+void initialize_outbound_connections();
+void shutdown_outbound_connections();
 void p2p_session_remove_stream(GSY_ConnectionHwnd, GSY_StreamId);
 void p2p_session_remove_connection(GSY_ConnectionHwnd);
 void p2p_session_shutdown();
@@ -67,7 +71,6 @@ void p2p_peers_initialize();
 namespace mqas::io { class UdpSocket; }
 void gsy_socket_handles_shutdown();
 std::shared_ptr<mqas::io::UdpSocket> gsy_get_socket(GSY_SocketHandle);
-bool cancel_pending_p2p_connection(GSY_ConnectionHwnd);
 
 // ── Server ────────────────────────────────────────────────────────────────────
 #include "core/server.h"
@@ -87,16 +90,24 @@ struct P2PServerState;
 struct ServerEntry {
     GSY_ServerHwnd hwnd = InvalidServer;
     GSY_BaseServerContext* ctx = nullptr;
+    bool use_p2p = false;
+    GSY_SocketHandle socket = GSY_INVALID_SOCKET;
+    GSY_P2PStreamPolicy stream_policy = nullptr;
     std::atomic_bool stopping{false};
     bool started = false;
     bool finalized = false;
     std::shared_ptr<const toml::value> config;
     std::weak_ptr<ServerEngineEntry> owner;
     std::shared_ptr<P2PServerState> p2p;
+    std::function<void(const std::shared_ptr<ServerEntry>&)> cleanup;
     std::unordered_map<GSY_ConnectionHwnd, std::weak_ptr<mqas::core::IConnect>> connections;
 };
-ErrorCode start_p2p_server(const std::shared_ptr<ServerEntry>&, GSY_EngineId,
-    const char* path, std::shared_ptr<const toml::value>);
+namespace mqas::core { struct TlsConfiguration; }
+ErrorCode prepare_p2p_server(const std::shared_ptr<ServerEntry>&, GSY_EngineId,
+    const toml::value&, sockaddr&, std::shared_ptr<mqas::io::UdpSocket>&,
+    std::shared_ptr<const mqas::core::TlsConfiguration>&);
+ErrorCode attach_p2p_server_engine(const std::shared_ptr<ServerEntry>&,
+    const std::shared_ptr<ServerEngineEntry>&, const std::shared_ptr<mqas::io::UdpSocket>&, const toml::value&);
 void stop_p2p_server(const std::shared_ptr<ServerEntry>&);
 bool authenticate_p2p_server(const std::shared_ptr<ServerEntry>&, const std::shared_ptr<mqas::core::IConnect>&);
 void attach_p2p_server_stream_policy(const std::shared_ptr<ServerEntry>&,
@@ -106,6 +117,7 @@ struct ServerEngineEntry {
     sockaddr_storage bind_addr{};
     mqas::core::engine_base_interface* engine = nullptr;
     std::vector<std::shared_ptr<ServerEntry>> servers;
+    std::shared_ptr<P2PServerState> p2p;
 };
 extern std::map<EngineKey, std::shared_ptr<ServerEngineEntry>> server_engines;
 extern std::unordered_map<GSY_ServerHwnd, std::shared_ptr<ServerEntry>> server_map;
@@ -129,9 +141,9 @@ R push_task_with_result(const std::function<R()> &task,bool force_delay = false)
 #include "template/connection.hpp"
 #include "template/server.hpp"
 
-#define GSY_DEFINE_ENGINE_TYPE(ET)                                                                                      \
+#define GSY_DEFINE_ENGINE_TYPE(ET, CC, SC)                                                                                      \
 GSY_TEMPLATE_BY_ENGINE_TYPE_FOR_ENGINE(ET)                                                                              \
-GSY_TEMPLATE_BY_ENGINE_TYPE_FOR_CONNECTION(ET)                                                                          \
-GSY_TEMPLATE_BY_ENGINE_TYPE_FOR_SERVER(ET)                                                                              \
+GSY_TEMPLATE_BY_ENGINE_TYPE_FOR_CONNECTION(ET, CC)                                                                          \
+GSY_TEMPLATE_BY_ENGINE_TYPE_FOR_SERVER(ET, SC)                                                                              \
 
 #endif //GSYNC_COMMON_H

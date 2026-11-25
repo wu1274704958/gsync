@@ -16,11 +16,6 @@ extern "C" {
 
     typedef unsigned int GSY_ServerHwnd;
 #define InvalidServer ((GSY_ServerHwnd)0)
-    typedef enum GSY_ServerMode {
-        GSY_SERVER_MODE_NORMAL = 0,
-        GSY_SERVER_MODE_P2P = 1,
-    } GSY_ServerMode;
-
     typedef struct GSYNC_EXTERN GSY_BaseServerContext {
         // 服务器启动成功/失败回调
         void(*on_started)(ErrorCode, GSY_ServerHwnd);
@@ -33,17 +28,9 @@ extern "C" {
         // 客户端断开
         void(*on_client_disconnect)(GSY_ServerHwnd, GSY_ConnectionHwnd);
         void* extend;
-        // Return nonzero to accept and set local_stream_id. On rejection, reason is optional.
-        // The reason must remain valid after the callback returns; the SDK copies it immediately.
-        int (*on_p2p_stream_request)(GSY_ServerHwnd, GSY_ConnectionHwnd,
-            GSY_StreamId, GSY_P2PStreamId peer_stream_id, GSY_P2PStreamId* local_stream_id, const char** reason);
-        /* Required in P2P mode. Leave zero in normal mode. */
-        GSY_SocketHandle socket;
-        GSY_ServerMode mode;
+        /* Read synchronously by GSY_launch_server. */
+        const GSY_ContextExtension* options;
     } GSY_BaseServerContext;
-
-    ErrorCode GSYNC_EXTERN GSY_RegisterServerP2PSession(GSY_ServerHwnd, GSY_SessionHandle);
-    ErrorCode GSYNC_EXTERN GSY_CancelServerP2PSession(GSY_ServerHwnd, GSY_SessionHandle);
 
     // 兼容的固定监听地址可共享 engine；各句柄按启动顺序尝试接收新连接。
     // cxt 须保持有效，直到启动失败回调或停止回调返回。

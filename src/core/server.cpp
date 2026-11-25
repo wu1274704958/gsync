@@ -58,7 +58,7 @@ void cleanup_server_engine(const std::shared_ptr<ServerEngineEntry>& entry)
 void finish_server_stop(const std::shared_ptr<ServerEntry>& server)
 {
     if (!server->stopping || server->finalized || !server->connections.empty()) return;
-    stop_p2p_server(server);
+    if (server->cleanup) server->cleanup(server);
     server->finalized = true;
     auto owner = server->owner.lock();
     if (owner) {

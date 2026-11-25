@@ -20,10 +20,8 @@ using Result = mqas::tools::proto::p2p::NotifyConnectResult;
 struct Peer {
     GSY_P2PPeerHandle id{};
     GSY_P2PPeerContext callbacks{};
-    GSY_BaseConnectionContext* base = nullptr;
     GSY_PeerId self{};
     GSY_ConnectionHwnd connection{};
-    GSY_ConnectionHwnd reserved{};
     std::shared_ptr<mqas::io::UdpSocket> socket;
     std::shared_ptr<P2PDatagramEngine> engine;
     std::shared_ptr<mqas::io::Timer> timer;
@@ -62,15 +60,12 @@ void cleanup(const std::shared_ptr<Peer>& p) {
     if (!p->connected && p->credential)
         p2p_session_release_attempt(p->session_handle, p->credential);
     p->credential.reset();
-    const auto handle = p->connection ? p->connection : p->reserved;
+    const auto handle = p->connection;
     {
         std::lock_guard lock(peers_mutex);
         if (handle) peer_connections.erase(handle);
     }
-    if (p->base) {
-        auto callback = p->connected ? p->base->on_disconnect : p->base->on_error;
-        if (callback) callback(p->close_reason, handle);
-    } else if (p->connected) {
+    if (p->connected) {
         if (p->callbacks.on_closed) p->callbacks.on_closed(p->id, p->close_reason, p->callbacks.user_data);
     } else {
         if (p->callbacks.on_failed) p->callbacks.on_failed(p->id, p->close_reason, p->callbacks.user_data);
@@ -109,7 +104,6 @@ void notify_authenticated(const std::shared_ptr<Peer>& p, mqas::core::IConnect& 
     p->credential.reset();
     if (p->timer && p->timer->is_start()) p->timer->stop();
     p->connected = true;
-    if (p->base && p->base->on_connect) p->base->on_connect(EC_Ok, p->connection);
     if (p->callbacks.on_connected) p->callbacks.on_connected(p->id, p->connection, p->callbacks.user_data);
 }
 
@@ -119,7 +113,7 @@ void attach(const std::shared_ptr<Peer>& p, const std::shared_ptr<Connection>& c
         if (!conn && !p->done) finish(p, EC_ConnectFailed);
         return;
     }
-    const auto handle = p->reserved ? p->reserved : get_new_connection_hwnd(2);
+    const auto handle = get_new_connection_hwnd(2);
     if (handle == InvalidConnection) { conn->close(); finish(p, EC_ConnectOverLimit); return; }
     p->connection = handle;
     p->transport = conn;
@@ -132,18 +126,11 @@ void attach(const std::shared_ptr<Peer>& p, const std::shared_ptr<Connection>& c
     locator->deposit_cxt<LocalPeerId>(conn, p->self);
     locator->deposit_cxt<std::shared_ptr<Result>>(conn, p->result);
     std::weak_ptr<Peer> weak = p;
-    conn->on_new_stream_signal.connect([weak, handle](std::shared_ptr<Connection::StreamType> stream) {
+    conn->on_new_stream_signal.connect([weak, handle](const auto& stream) {
         const auto peer = weak.lock();
-        if (!peer || !peer->connected || peer->done) return;
+        if (!peer || !peer->connected || peer->done || !peer->callbacks.on_stream_open) return;
         const auto sid = reinterpret_cast<GSY_StreamId>(stream->get_origin());
-        if (peer->base && peer->base->on_stream_open) peer->base->on_stream_open(handle, sid, EC_Ok);
-        if (peer->callbacks.on_stream_open)
-            peer->callbacks.on_stream_open(peer->id, handle, sid, peer->callbacks.user_data);
-    });
-    conn->on_stream_close_signal.connect([weak, handle](std::shared_ptr<Connection::StreamType> stream) {
-        const auto peer = weak.lock();
-        if (peer && peer->connected && peer->base && peer->base->on_stream_close)
-            peer->base->on_stream_close(handle, reinterpret_cast<GSY_StreamId>(stream->get_origin()), EC_Ok);
+        peer->callbacks.on_stream_open(peer->id, handle, sid, peer->callbacks.user_data);
     });
     conn->on_hsk_done_signal.connect([weak](mqas::core::IConnect& connection, lsquic_hsk_status) {
         if (auto peer = weak.lock()) notify_authenticated(peer, connection);
@@ -193,19 +180,9 @@ ErrorCode GSY_GetConnectionP2PPeerId(GSY_ConnectionHwnd handle, GSY_PeerId* out)
     });
 }
 
-bool cancel_pending_p2p_connection(GSY_ConnectionHwnd handle) {
-    std::lock_guard lock(peers_mutex);
-    const auto it = peer_connections.find(handle);
-    if (it == peer_connections.end()) return false;
-    auto peer = it->second.lock();
-    if (!peer || !peer->base) return false;
-    push_task([peer] { finish(peer, EC_Disconnected); }, true);
-    return true;
-}
-
 static ErrorCode start_peer(const char* config_file, GSY_SessionHandle session_handle,
     GSY_PeerId self_id, const GSY_HelperResult* helper, const GSY_P2PPeerContext* context,
-    GSY_P2PPeerHandle* out_peer, GSY_BaseConnectionContext* base, GSY_ConnectionHwnd* out_connection) {
+    GSY_P2PPeerHandle* out_peer) {
     std::shared_ptr<mqas::io::UdpSocket> socket;
     std::shared_ptr<const P2PSession> credential;
     const auto acquired = p2p_session_acquire(session_handle, socket, credential);
@@ -220,14 +197,12 @@ static ErrorCode start_peer(const char* config_file, GSY_SessionHandle session_h
     if (helper && (credential->self_id != self_id || credential->peer_id != helper->peer_id ||
         credential->is_server != (helper->is_server != 0) || credential->peer_ip != helper->peer_addr.ip ||
         credential->peer_port != helper->peer_addr.port)) return EC_Fail;
-    if (base && credential->is_server) return EC_Fail;
     sockaddr address{};
     if (!credential->peer_port ||
         !mqas::io::Ip::str2addr_ipv4(credential->peer_ip.c_str(), credential->peer_port, address))
         return EC_InvalidAddress;
     auto p = std::make_shared<Peer>();
     if (context) p->callbacks = *context;
-    p->base = base;
     p->self = credential->self_id;
     p->socket = std::move(socket);
     p->credential = std::move(credential);
@@ -240,12 +215,6 @@ static ErrorCode start_peer(const char* config_file, GSY_SessionHandle session_h
     std::lock_guard<std::mutex> lock(peers_mutex);
     if (!accepting_peers) return EC_NotInitialized;
     if (!next_peer) return EC_ConnectOverLimit;
-    if (base) {
-        p->reserved = get_new_connection_hwnd(2);
-        if (!p->reserved) return EC_ConnectOverLimit;
-        peer_connections.emplace(p->reserved, p);
-        *out_connection = p->reserved;
-    }
     p->id = next_peer++;
     peers.emplace(p->id, p);
     if (out_peer) *out_peer = p->id;
@@ -278,8 +247,7 @@ static ErrorCode start_peer(const char* config_file, GSY_SessionHandle session_h
             p->engine->start_recv();
             p->engine->process_conns();
             if (!server) {
-                const auto name = p->base ? mqas::tools::p2p::psk_server_name(p->credential->identity) : std::string{};
-                attach(p, engine->connect(address, N_LSQVER, p->base ? name.c_str() : nullptr).lock());
+                attach(p, engine->connect(address, N_LSQVER).lock());
             }
             if (!p->connected && !p->done) {
                 p->timer = io_cxt->make_shared<mqas::io::Timer>();
@@ -302,15 +270,7 @@ ErrorCode GSY_StartP2PPeer(const char* config_file, GSY_PeerId self_id,
     if (!self_id || helper->ret != EC_Ok || !helper->peer_id ||
         (helper->is_server != 0 && helper->is_server != 1) ||
         !std::memchr(helper->peer_addr.ip, '\0', sizeof(helper->peer_addr.ip))) return EC_Fail;
-    return start_peer(config_file, helper->session_handle, self_id, helper, context, out_peer, nullptr, nullptr);
-}
-
-ErrorCode GSY_connect_session(const char* config_file, GSY_SessionHandle session,
-    GSY_BaseConnectionContext* context, GSY_ConnectionHwnd* out_connection) {
-    if (out_connection) *out_connection = InvalidConnection;
-    if (!is_running) return EC_NotInitialized;
-    if (!config_file || !*config_file || !context || !out_connection) return EC_Fail;
-    return start_peer(config_file, session, 0, nullptr, nullptr, nullptr, context, out_connection);
+    return start_peer(config_file, helper->session_handle, self_id, helper, context, out_peer);
 }
 
 ErrorCode GSY_CloseP2PPeer(GSY_P2PPeerHandle id) {

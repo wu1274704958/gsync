@@ -69,6 +69,13 @@ static void connect_datagram_signals(
 
 // ── GSY_ConnectPeerDatagram ───────────────────────────────────────────────────
 // Opens a direct stream on an authenticated transport.
+ErrorCode GSY_MakePeerDatagramStream(GSY_ConnectionHwnd handle, GSY_P2PStreamId local_stream_id,
+    GSY_P2PDatagramConnectionContext* context, GSY_RequestId request_id,
+    GSY_DatagramStreamCreated completion, void* user)
+{
+    return GSY_ConnectPeerDatagram(handle, 0, local_stream_id, context, request_id, completion, user);
+}
+
 ErrorCode GSY_ConnectPeerDatagram(GSY_ConnectionHwnd handle, GSY_PeerId peer_id, GSY_P2PStreamId local_stream_id,
     GSY_P2PDatagramConnectionContext* context, GSY_RequestId request_id,
     GSY_DatagramStreamCreated completion, void* user)
