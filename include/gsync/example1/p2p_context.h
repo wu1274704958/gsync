@@ -1,7 +1,8 @@
 #pragma once
 
-#include "core/connection.h"
-#include "core/server.h"
+#include "gsync/core/connection.h"
+#include "gsync/core/server.h"
+#include "gsync/example1/types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,6 +23,9 @@ extern "C" {
         GSY_SocketHandle socket;
         GSY_P2PStreamPolicy stream_policy;
     } GSY_P2PServerOptions;
+
+    /* Available after the P2P connection has been authenticated. */
+    ErrorCode GSYNC_EXTERN GSY_GetConnectionP2PPeerId(GSY_ConnectionHwnd, GSY_PeerId*);
 
     ErrorCode GSYNC_EXTERN GSY_RegisterServerP2PSession(GSY_ServerHwnd, GSY_SessionHandle);
     ErrorCode GSYNC_EXTERN GSY_CancelServerP2PSession(GSY_ServerHwnd, GSY_SessionHandle);

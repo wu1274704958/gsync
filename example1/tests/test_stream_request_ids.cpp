@@ -1,5 +1,5 @@
-#include "../lobby.h"
-#include "../lib.hpp"
+#include "gsync/example1/lobby.h"
+#include "../../src/example1/lib.hpp"
 #include <mqas/context.h>
 #include <mqas/io/context.h>
 #include <mqas/io/timer.h>

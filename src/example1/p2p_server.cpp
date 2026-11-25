@@ -1,8 +1,8 @@
-#include "lobby.h"
+#include "gsync/example1/lobby.h"
 #include "lib.hpp"
 #include "p2p_session.h"
 #include "p2p_session_registry.h"
-#include "../src/common.h"
+#include "../core/common.h"
 #include <mqas/io/timer.h>
 #include <mqas/tools/model/psk_tls_context.h>
 

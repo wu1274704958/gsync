@@ -1,7 +1,7 @@
 add_subdirectory(test_launch_server)
 add_subdirectory(test_connect_server)
 
-add_executable(test_p2p_session_registry test_p2p_session_registry.cpp ../p2p_session_registry.cpp ../p2p_session.cpp)
+add_executable(test_p2p_session_registry test_p2p_session_registry.cpp ../../src/example1/p2p_session_registry.cpp ../../src/example1/p2p_session.cpp)
 target_link_libraries(test_p2p_session_registry PRIVATE mqas ${boringssl_crypto_LIBRARY})
 add_test(NAME p2p_session_registry COMMAND test_p2p_session_registry)
 
@@ -29,15 +29,8 @@ target_link_libraries(test_lobby_registration PRIVATE gsync_e1 mqas)
 target_compile_definitions(test_lobby_registration PRIVATE
     CLIENT_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test_connect_server/conf.txt"
     SERVER_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test_launch_server/conf.txt")
-add_executable(test_p2p_peer test_p2p_peer.cpp)
-target_link_libraries(test_p2p_peer PRIVATE gsync_e1)
 add_executable(test_lobby_cert_pin test_lobby_cert_pin.cpp)
 target_link_libraries(test_lobby_cert_pin PRIVATE gsync_e1)
-add_executable(test_peer_c_header test_peer_c_header.c)
-target_compile_definitions(test_peer_c_header PRIVATE GSYNC_NO_EXPORT)
-target_link_libraries(test_peer_c_header PRIVATE gsync_e1)
-add_test(NAME peer_c_header COMMAND test_peer_c_header)
-
 # Compile the migrated examples without requiring their interactive runtimes.
 foreach(sample custom_stream_cli send_file pb_stream_cli test_variant_stream_cli test_relay_cli)
     add_library(compile_${sample} OBJECT EXCLUDE_FROM_ALL
@@ -95,28 +88,12 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME p2p_unauthenticated_rejected COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test_stream_examples.py p2p
         $<TARGET_FILE:test_launch_server> $<TARGET_FILE:test_connect_server>)
-    add_test(NAME p2p_isolated_same_process COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_p2p.py $<TARGET_FILE:gsync_e1>
-        $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/example1/tests/p2p_isolated_config.toml)
-    set_tests_properties(p2p_isolated_same_process PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
     add_test(NAME p2p_basic_server COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_p2p.py $<TARGET_FILE:gsync_e1>
         $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/example1/tests/p2p_isolated_config.toml server)
     set_tests_properties(p2p_basic_server PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-    add_test(NAME p2p_peer COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/test_p2p_peer.py $<TARGET_FILE:test_lobby_registration>
-        $<TARGET_FILE:test_p2p_peer> ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
-    foreach(delay server client bad_identity timeout cancel client_cancel bad_config lobby_close parallel)
-        add_test(NAME p2p_peer_${delay}_late COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/test_p2p_peer.py $<TARGET_FILE:test_lobby_registration>
-            $<TARGET_FILE:test_p2p_peer> ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR} ${delay})
-    endforeach()
     set_tests_properties(custom_stream p2p_unauthenticated_rejected lobby_registration PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
-    set_tests_properties(p2p_peer p2p_peer_server_late p2p_peer_client_late p2p_peer_bad_identity_late
-        p2p_peer_timeout_late p2p_peer_cancel_late p2p_peer_bad_config_late
-        p2p_peer_client_cancel_late p2p_peer_lobby_close_late p2p_peer_parallel_late PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 endif()
 
 if(Python3_Interpreter_FOUND)

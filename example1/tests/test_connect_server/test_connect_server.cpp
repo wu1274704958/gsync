@@ -5,9 +5,9 @@
 #include <mqas/tools/stream/MsgDef.h>
 
 #include "../../lobby.h"
-#include "core/engine.h"
-#include "core/connection.h"
-#include "../../p2p_connection_datagram.h"
+#include "gsync/core/runtime.h"
+#include "gsync/core/connection.h"
+#include "gsync/example1/p2p_datagram.h"
 
 #ifndef CONFIG_PATH
 #define CONFIG_PATH "conf.txt"

@@ -1,9 +1,9 @@
 #include <cstdio>
 #include <cstring>
 #include "../../lobby.h"
-#include "core/engine.h"
-#include "core/server.h"
-#include "../../p2p_connection_datagram.h"
+#include "gsync/core/runtime.h"
+#include "gsync/core/server.h"
+#include "gsync/example1/p2p_datagram.h"
 
 #ifndef CONFIG_PATH
 #define CONFIG_PATH "conf.txt"

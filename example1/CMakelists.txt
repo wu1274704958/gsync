@@ -1,26 +1,31 @@
 add_custom_command(
-        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.pb.cc ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.pb.h
+        OUTPUT ${CMAKE_SOURCE_DIR}/src/example1/p2p_datagram.pb.cc ${CMAKE_SOURCE_DIR}/src/example1/p2p_datagram.pb.h
         COMMAND $<TARGET_FILE:protobuf::protoc> --cpp_out=. p2p_datagram.proto
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.proto protobuf::protoc
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        DEPENDS ${CMAKE_SOURCE_DIR}/src/example1/p2p_datagram.proto protobuf::protoc
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src/example1
         COMMENT "Generating p2p_datagram proto"
 )
 add_custom_target(gsync_e1_proto DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.pb.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/p2p_datagram.pb.h)
+        ${CMAKE_SOURCE_DIR}/src/example1/p2p_datagram.pb.cc
+        ${CMAKE_SOURCE_DIR}/src/example1/p2p_datagram.pb.h)
 
 add_library(gsync_e1 SHARED
-        lib.cpp lobby.cpp p2p_session_registry.cpp p2p_peer.cpp p2p_session.cpp p2p_server.cpp
-        p2p_datagram_stream.cpp
-        p2p_connection_datagram.cpp
-        p2p_datagram.pb.cc
+        ../src/example1/lib.cpp ../src/example1/lobby.cpp ../src/example1/p2p_session_registry.cpp
+        ../src/example1/p2p_session.cpp ../src/example1/p2p_server.cpp
+        ../src/example1/p2p_datagram_stream.cpp ../src/example1/p2p_connection_datagram.cpp
+        ../src/example1/p2p_datagram.pb.cc
         ${GSY_SOURCE_FILES})
 
 add_dependencies(gsync_e1 gsync_e1_proto)
 
 add_dependencies(gsync_e1 mqas)
 
-target_link_libraries(gsync_e1 PUBLIC mqas)
+target_link_libraries(gsync_e1 PRIVATE mqas)
+target_include_directories(gsync_e1 PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>)
+install(TARGETS gsync_e1 RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/gsync DESTINATION include FILES_MATCHING PATTERN "*.h")
 
 add_custom_command(TARGET gsync_e1 POST_BUILD
         COMMAND ${CMAKE_COMMAND}

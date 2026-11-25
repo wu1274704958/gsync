@@ -1,8 +1,8 @@
 #pragma once
 #include <memory>
 #include <string>
-#include "def.h"
-#include "core/session_handle.h"
+#include "gsync/core/types.h"
+#include "gsync/core/session_handle.h"
 namespace mqas::io { class UdpSocket; }
 struct P2PSession;
 GSY_SessionHandle p2p_session_register(GSY_ConnectionHwnd, GSY_StreamId,

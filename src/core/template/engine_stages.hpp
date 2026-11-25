@@ -3,8 +3,8 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
-#include "def.h"
-#include "core/server.h"
+#include "gsync/core/types.h"
+#include "gsync/core/server.h"
 #include <memory>
 
 struct ServerEntry;

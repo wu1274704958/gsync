@@ -1,4 +1,4 @@
-#include "core/connection.h"
+#include "gsync/core/connection.h"
 #include <memory>
 #include <utility>
 #include <condition_variable>
@@ -12,7 +12,7 @@
 #include "mqas/tools/model/p2p_model.h"
 #include "mqas/tools/stream/p2p_lobby_client.h"
 #include "mqas/tools/stream/p2p_helper_client.h"
-#include "../common.h"
+#include "common.h"
 
 mqas::tools::unique_id_generator<GSY_ConnectionHwnd,true> id_generator;
 

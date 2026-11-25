@@ -1,6 +1,6 @@
 #pragma once
-#include "engine_stages.hpp"
-#include "core/p2p_context.h"
+#include "../core/template/engine_stages.hpp"
+#include "gsync/example1/p2p_context.h"
 #include "p2p_session.h"
 #include "p2p_session_registry.h"
 #include <mqas/comm/locator.h>

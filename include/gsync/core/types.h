@@ -47,6 +47,10 @@ extern "C" {
     typedef unsigned int GSY_ConnectionHwnd;
     typedef unsigned int GSY_EngineId;
 
+    typedef uint32_t GSY_RequestId;
+    #define INVALID_SID ((GSY_StreamId)0)
+    #define NONE_RID ((GSY_RequestId)0)
+
     typedef uint64_t GSY_StreamId;
     /* Nonzero application stream identifier, unique per direction on a P2P connection. */
     typedef uint32_t GSY_P2PStreamId;

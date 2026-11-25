@@ -1,7 +1,7 @@
 #if !defined(GSYNC_BUILD_UNIT_TEST)
 #error This file is only for the unit-test build.
 #endif
-#include "../../src/common.h"
+#include "../../src/core/common.h"
 #include "mqas/io/ip.h"
 #include <cstdint>
 

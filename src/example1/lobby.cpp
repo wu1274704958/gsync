@@ -1,11 +1,11 @@
-#include "lobby.h"
+#include "gsync/example1/lobby.h"
 #include <utility>
 #include "mqas/core/def.h"
 #include "mqas/core/stream.h"
 #include "mqas/io/ip.h"
 #include "mqas/tools/stream/p2p_lobby_client.h"
 #include "mqas/tools/stream/p2p_helper_client.h"
-#include "../src/common.h"
+#include "../core/common.h"
 #include "lib.hpp"
 #include "p2p_session_registry.h"
 #include "p2p_session.h"

@@ -1,3 +1,5 @@
+> 历史设计记录：独立 `GSY_StartP2PPeer` 接口已移除，当前使用基础 server 和连接接口。
+
 # P2P server engine 复用
 
 本文记录旧 `GSY_StartP2PPeer` 实现的复用讨论。基础 server 的可用接口、会话登记和调用流程见 [P2P Server 使用说明](../p2p-server.md)。

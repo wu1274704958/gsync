@@ -1,7 +1,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
-#include "lobby.h"
+#include "gsync/example1/lobby.h"
 #include <mqas/log.h>
 
 #ifndef CONFIG_PATH

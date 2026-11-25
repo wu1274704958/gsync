@@ -5,8 +5,8 @@
 #ifndef GSYNC_CONNECTION_H
 #define GSYNC_CONNECTION_H
 
-#include "macro.h"
-#include "def.h"
+#include "gsync/core/macro.h"
+#include "gsync/core/types.h"
 #include "session_handle.h"
 
 #if __cplusplus

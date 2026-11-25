@@ -1,4 +1,4 @@
-#include "../lobby.h"
+#include "gsync/example1/lobby.h"
 #include <atomic>
 #include <chrono>
 #include <cstdio>

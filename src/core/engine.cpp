@@ -1,4 +1,4 @@
-#include "core/engine.h"
+#include "gsync/core/runtime.h"
 #include <memory>
 #include <utility>
 #include <mqas/io/context.h>
@@ -8,7 +8,7 @@
 #include "mqas/core/engine_driver.h"
 #include "mqas/core/stream.h"
 #include "mqas/tools/model/p2p_model.h"
-#include "../common.h"
+#include "common.h"
 #include <ranges>
 
 
@@ -42,7 +42,6 @@ int GSY_initialize(int flag,GSY_Context* cxt)
     main_thread = std::make_unique<std::thread>(mian_func);
     waiting_for_context_initialized();
     initialize_outbound_connections();
-    p2p_peers_initialize();
     return EC_Ok;
 }
 
@@ -54,7 +53,6 @@ int GSY_terminate()
         return EC_Fail;
     { std::lock_guard lock(server_mutex); server_shutting_down = true; }
     shutdown_outbound_connections();
-    p2p_peers_shutdown();
     push_task_with_result<int>([] { shutdown_server_engines(); return 0; }, true);
     wait_for_server_shutdown();
     push_task_with_result<int>([] { gsy_socket_handles_shutdown(); return 0; }, true);

@@ -1,8 +1,8 @@
-#include "core/server.h"
+#include "gsync/core/server.h"
 #include "mqas/tools/unique_id_generator.h"
 #include "mqas/core/connect.h"
 #include "mqas/core/engine_settings.h"
-#include "../common.h"
+#include "common.h"
 #include <algorithm>
 #include <condition_variable>
 

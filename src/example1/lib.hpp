@@ -1,5 +1,5 @@
 #pragma once
-#include "def.h"
+#include "gsync/core/types.h"
 #include "mqas/core/def.h"
 #include "mqas/core/sub_engine.h"
 #include "mqas/tools/stream/p2p_helper_client.h"

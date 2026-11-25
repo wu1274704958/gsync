@@ -12,32 +12,20 @@
 #include <stdbool.h>
 #endif
 
-#include "core/engine.h"
-#include "core/connection.h"
-#include "core/session_handle.h"
+#include "gsync/example1/types.h"
+#include "gsync/core/runtime.h"
+#include "gsync/core/connection.h"
+#include "gsync/core/session_handle.h"
 
 #if __cplusplus
 extern "C" {
 #endif
-
-    typedef uint32_t GSY_PeerId;
-    typedef uint32_t GSY_RequestId;
 
     typedef enum GSY_ServerPreference {
         GSY_SERVER_NO_PREFERENCE = 0,
         GSY_SERVER_VOLUNTEER = 1,
         GSY_SERVER_REUSABLE = 2,
     } GSY_ServerPreference;
-
-    #ifdef __cplusplus
-    const GSY_StreamId INVALID_SID = 0;
-    const GSY_PeerId INVALID_PID = 0;
-    const GSY_RequestId NONE_RID = 0;
-    #else
-    #define INVALID_SID ((GSY_StreamId)0)
-    #define INVALID_PID ((GSY_PeerId)0)
-    #define NONE_RID ((GSY_RequestId)0)
-    #endif
 
     typedef struct GSYNC_EXTERN GSY_PeerData
     {

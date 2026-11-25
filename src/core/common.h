@@ -15,10 +15,10 @@
 #include <atomic>
 #include <vector>
 #include <memory>
-#include "core/p2p_context.h"
-#include "def.h"
+#include "gsync/example1/p2p_context.h"
+#include "gsync/core/types.h"
 #include "uv.h"
-#include "core/engine.h"
+#include "gsync/core/runtime.h"
 #include "mqas/context.h"
 
 namespace mqas::core {
@@ -66,14 +66,12 @@ void shutdown_outbound_connections();
 void p2p_session_remove_stream(GSY_ConnectionHwnd, GSY_StreamId);
 void p2p_session_remove_connection(GSY_ConnectionHwnd);
 void p2p_session_shutdown();
-void p2p_peers_shutdown();
-void p2p_peers_initialize();
 namespace mqas::io { class UdpSocket; }
 void gsy_socket_handles_shutdown();
 std::shared_ptr<mqas::io::UdpSocket> gsy_get_socket(GSY_SocketHandle);
 
 // ── Server ────────────────────────────────────────────────────────────────────
-#include "core/server.h"
+#include "gsync/core/server.h"
 
 // server_hwnd encoding:  engine_id * MAX_SERVER_HWND + local_id
 // (mirrors the  engine_id * MAX_CONNECTION_HWND + local_id  pattern for connections)

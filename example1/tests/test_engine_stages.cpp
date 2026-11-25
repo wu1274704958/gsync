@@ -1,4 +1,4 @@
-#include "../../src/template/engine_stages.hpp"
+#include "../../src/core/template/engine_stages.hpp"
 #include <cassert>
 
 using namespace gsync::stages;

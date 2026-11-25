@@ -1,5 +1,5 @@
-#include "../p2p_session_registry.h"
-#include "../p2p_session.h"
+#include "../../src/example1/p2p_session_registry.h"
+#include "../../src/example1/p2p_session.h"
 #include <mqas/io/udp.h>
 #include <atomic>
 #include <barrier>

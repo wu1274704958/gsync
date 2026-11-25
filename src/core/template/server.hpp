@@ -1,11 +1,11 @@
 #pragma once
 #include <type_traits>
 #include <cstring>
-#include "def.h"
+#include "gsync/core/types.h"
 #include "../common.h"
 #include "connection_events.hpp"
 #include "engine_stages.hpp"
-#include "core/server.h"
+#include "gsync/core/server.h"
 #include "mqas/core/engine.h"
 #include "mqas/core/engine_driver.h"
 #include "mqas/core/engine_settings.h"

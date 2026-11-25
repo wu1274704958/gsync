@@ -1,7 +1,8 @@
-#include "p2p_connection_datagram.h"
+#include "gsync/example1/p2p_datagram.h"
 #include "lib.hpp"
-#include "p2p_peer_internal.h"
-#include "../src/common.h"
+#include "gsync/example1/p2p_context.h"
+#include <mqas/comm/locator.h>
+#include "../core/common.h"
 #include "mqas/tools/stream/MsgDef.h"
 #include <easylogging++.h>
 #include <limits>
@@ -39,29 +40,21 @@ static void connect_datagram_signals(
     });
     ds->on_connected_signal.connect(
         [ctx, handle, stream_id,request_id](const std::string& peer_name,uint32_t peer_id) {
-        P2PCredentials credentials{};
-        if (p2p_peer_credentials(handle, credentials)) peer_id = credentials.other;
         if (ctx->on_connected)
             ctx->on_connected(EC_Ok, stream_id, peer_id, peer_name.c_str(), request_id);
     });
     ds->on_disconnected_signal.connect(
         [ctx, handle, stream_id](const std::string& reason,uint32_t peer_id) {
-        P2PCredentials credentials{};
-        if (p2p_peer_credentials(handle, credentials)) peer_id = credentials.other;
         if (ctx->on_disconnected)
             ctx->on_disconnected(EC_Ok, stream_id, peer_id, reason.c_str());
     });
     ds->on_connect_failed_signal.connect(
         [ctx, handle, stream_id, request_id](mqas::tools::proto::p2p_client::RetCode,uint32_t peer_id) {
-        P2PCredentials credentials{};
-        if (p2p_peer_credentials(handle, credentials)) peer_id = credentials.other;
         if (ctx->on_connect_failed)
             ctx->on_connect_failed(EC_Fail, stream_id, peer_id, request_id);
     });
     ds->on_datagram_received_signal.connect(
         [ctx, stream_id, handle](const std::span<uint8_t>& data,uint32_t peer_id) {
-        P2PCredentials credentials{};
-        if (p2p_peer_credentials(handle, credentials)) peer_id = credentials.other;
         if (ctx->on_datagram_received)
             ctx->on_datagram_received(data.data(), data.size(), stream_id, peer_id, handle);
     });
@@ -92,18 +85,16 @@ ErrorCode GSY_ConnectPeerDatagram(GSY_ConnectionHwnd handle, GSY_PeerId peer_id,
         conn->security_info().authentication != mqas::core::PeerAuthentication::ExternalPsk)
         return EC_EngineNotMatch;
     auto p2p_conn = std::static_pointer_cast<P2PDatagramConnect>(conn);
-    P2PCredentials credentials{};
-    if (!p2p_peer_credentials(handle, credentials)) {
-        const bool found = push_task_with_result<bool>([conn, &credentials] {
-            const auto locator = mqas::comm::locator::inst();
-            const auto self = locator->get<LocalPeerId>(conn);
-            const auto result = locator->get<std::shared_ptr<mqas::tools::proto::p2p::NotifyConnectResult>>(conn);
-            if (!self || !result || !result->get()) return false;
-            credentials = {self->get(), result->get()->peer_id()};
-            return true;
-        });
-        if (!found) return EC_EngineNotMatch;
-    }
+    struct PeerIds { GSY_PeerId self; GSY_PeerId other; } credentials{};
+    const bool found = push_task_with_result<bool>([conn, &credentials] {
+        const auto locator = mqas::comm::locator::inst();
+        const auto self = locator->get<LocalPeerId>(conn);
+        const auto result = locator->get<std::shared_ptr<mqas::tools::proto::p2p::NotifyConnectResult>>(conn);
+        if (!self || !result || !result->get()) return false;
+        credentials = {self->get(), result->get()->peer_id()};
+        return true;
+    });
+    if (!found) return EC_EngineNotMatch;
     peer_id = credentials.other;
     context->_check_code = 193;
     const auto self_id = credentials.self;
@@ -300,6 +291,28 @@ ErrorCode GSY_GetPeerStreamIds(GSY_ConnectionHwnd handle, GSY_StreamId sid, GSY_
         if (!conn) return EC_InvalidHandler;
         auto registry = mqas::comm::locator::inst()->get<std::shared_ptr<mqas::tools::p2p_direct::DirectStreamRegistry>>(conn);
         if (!registry || !registry.value().get()->find_stream(reinterpret_cast<void*>(sid), *local, *peer)) return EC_NotExists;
+        return EC_Ok;
+    });
+}
+
+ErrorCode GSY_GetConnectionP2PPeerId(GSY_ConnectionHwnd handle, GSY_PeerId* out) {
+    if (!out) return EC_Fail;
+    *out = INVALID_PID;
+    if (!is_running) return EC_NotInitialized;
+    return push_task_with_result<ErrorCode>([handle, out] {
+        std::shared_ptr<mqas::core::IConnect> conn;
+        {
+            std::lock_guard<std::mutex> lock(connect_mutex);
+            const auto it = connect_map.find(handle);
+            if (it != connect_map.end()) conn = it->second.lock();
+        }
+        if (!conn) return EC_InvalidHandler;
+        const auto security = conn->security_info();
+        if (security.handshake != mqas::core::HandshakeState::Succeeded ||
+            security.authentication != mqas::core::PeerAuthentication::ExternalPsk) return EC_WrongStreamState;
+        const auto result = mqas::comm::locator::inst()->get<std::shared_ptr<mqas::tools::proto::p2p::NotifyConnectResult>>(conn);
+        if (!result || !result->get() || !result->get()->peer_id()) return EC_WrongStreamState;
+        *out = result->get()->peer_id();
         return EC_Ok;
     });
 }

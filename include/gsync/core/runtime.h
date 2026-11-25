@@ -5,8 +5,8 @@
 #ifndef GSYNC_CORE_H
 #define GSYNC_CORE_H
 
-#include "macro.h"
-#include "def.h"
+#include "gsync/core/macro.h"
+#include "gsync/core/types.h"
 
 #if __cplusplus
 extern "C" {

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "def.h"
-#include "lobby.h"
-#include "macro.h"
+#include "gsync/core/types.h"
+#include "gsync/example1/lobby.h"
+#include "gsync/core/macro.h"
 
 #if __cplusplus
 extern "C" {
