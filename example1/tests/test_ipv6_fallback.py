@@ -25,9 +25,9 @@ def wait_for(fn):
     raise TimeoutError(fn)
 
 
-def peer(dll, config, peer_config, port, pipe, initiator, directory, bind_failure):
+def peer(dll, config, peer_config, port, pipe, initiator, directory, scenario):
     os.chdir(directory)
-    if bind_failure and initiator:
+    if scenario == "bind-failure" and initiator:
         os.environ["MQAS_TEST_IPV6_LOOPBACK"] = "bind-failure"
     if os.name == "nt":
         os.add_dll_directory(str(dll.parent))
@@ -71,7 +71,7 @@ def peer(dll, config, peer_config, port, pipe, initiator, directory, bind_failur
             assert wait_for(lambda: events.get("incoming")) == other
             assert api("RespondPeerConnectRequest", I, U, S, U, C.c_bool, U)(handle, sid, other, True, 2) == 2
         code, session, server, local_ip, remote_ip = wait_for(lambda: events.get("result"))
-        expected = b"127.0.0.1" if bind_failure else b"::1"
+        expected = b"127.0.0.1" if scenario != "ipv6" else b"::1"
         assert (code, local_ip, remote_ip) == (0, expected, expected)
         dg = DCtx()
         dg.connected = DCON(event("stream"))
@@ -152,7 +152,7 @@ def relay_ipv4(proxies, stop, lobby):
 
 def main():
     dll, exe, tests, peer_config = (Path(x).resolve() for x in sys.argv[1:5])
-    bind_failure = "bind-failure" in sys.argv[5:]
+    scenario = sys.argv[5] if len(sys.argv) > 5 else "ipv6"
     os.environ["MQAS_TEST_IPV6_LOOPBACK"] = "1"
     with tempfile.TemporaryDirectory() as root:
         root = Path(root)
@@ -180,7 +180,7 @@ def main():
                 directory.mkdir()
                 parent, child = ctx.Pipe()
                 worker = ctx.Process(target=peer, args=(dll, client_config, peer_config,
-                    8101 if bind_failure else p.getsockname()[1], child, i == 0, directory, bind_failure))
+                    8101 if scenario != "ipv6" else p.getsockname()[1], child, i == 0, directory, scenario))
                 worker.start()
                 child.close()
                 workers.append(worker)

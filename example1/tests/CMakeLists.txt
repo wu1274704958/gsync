@@ -97,7 +97,11 @@ if(Python3_Interpreter_FOUND)
             ${CMAKE_CURRENT_SOURCE_DIR}/test_ipv6_fallback.py $<TARGET_FILE:gsync_e1>
             $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/p2p_isolated_config.toml bind-failure)
-        set_tests_properties(p2p_ipv6_fallback p2p_ipv6_bind_failure PROPERTIES TIMEOUT 40 RUN_SERIAL TRUE)
+        add_test(NAME p2p_dual_stack_ipv4_wins COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_ipv6_fallback.py $<TARGET_FILE:gsync_e1>
+            $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/p2p_isolated_config.toml both-reachable)
+        set_tests_properties(p2p_dual_stack_ipv4_wins p2p_ipv6_fallback p2p_ipv6_bind_failure PROPERTIES TIMEOUT 40 RUN_SERIAL TRUE)
     endif()
     add_test(NAME p2p_basic_server COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_p2p.py $<TARGET_FILE:gsync_e1>
