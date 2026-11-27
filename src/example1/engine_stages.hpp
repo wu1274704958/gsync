@@ -4,6 +4,7 @@
 #include "p2p_session.h"
 #include "p2p_session_registry.h"
 #include <mqas/comm/locator.h>
+#include <easylogging++.h>
 #include <mqas/tools/model/psk_tls_context.h>
 
 namespace gsync::stages {
@@ -28,9 +29,7 @@ inline ErrorCode acquire_p2p_session(ConnectAttempt& attempt) {
     const auto& credential = *state->credential;
     if (!credential.valid_now()) return EC_Timeout;
     if (credential.is_server) return EC_Fail;
-    if (!credential.peer_port ||
-        !mqas::io::Ip::str2addr_ipv4(credential.peer_ip.c_str(), credential.peer_port, attempt.remote))
-        return EC_InvalidAddress;
+    attempt.remote = credential.peer_address;
     attempt.handshake_timeout_ms = 10000;
     attempt.extension = std::move(state);
     return EC_Ok;
@@ -73,6 +72,8 @@ inline ErrorCode accept_p2p_handshake(ConnectAttempt& attempt) {
         return EC_ConnectFailed;
     if (!state->credential->valid_now()) return EC_Timeout;
     if (!p2p_session_consume(state->session, state->credential)) return EC_InvalidHandler;
+    LOG(INFO) << "p2p_connected route=direct family="
+              << (attempt.remote.native().sa_family == AF_INET6 ? "ipv6" : "ipv4");
     state->credential.reset();
     return EC_Ok;
 }

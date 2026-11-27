@@ -92,7 +92,15 @@ if(Python3_Interpreter_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_p2p.py $<TARGET_FILE:gsync_e1>
         $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/example1/tests/p2p_isolated_config.toml server)
-    set_tests_properties(p2p_basic_server PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+    add_test(NAME p2p_basic_server_ipv6 COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_p2p.py $<TARGET_FILE:gsync_e1>
+        $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/example1/tests/p2p_isolated_config.toml ipv6)
+    add_test(NAME p2p_basic_server_timeout COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_p2p.py $<TARGET_FILE:gsync_e1>
+        $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/example1/tests/p2p_isolated_config.toml check_timeout)
+    set_tests_properties(p2p_basic_server p2p_basic_server_ipv6 p2p_basic_server_timeout PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
     set_tests_properties(custom_stream p2p_unauthenticated_rejected lobby_registration PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 endif()
 

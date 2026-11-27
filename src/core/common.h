@@ -102,7 +102,7 @@ struct ServerEntry {
 };
 namespace mqas::core { struct TlsConfiguration; }
 ErrorCode prepare_p2p_server(const std::shared_ptr<ServerEntry>&, GSY_EngineId,
-    const toml::value&, sockaddr&, std::shared_ptr<mqas::io::UdpSocket>&,
+    const toml::value&, mqas::io::SocketAddress&, std::shared_ptr<mqas::io::UdpSocket>&,
     std::shared_ptr<const mqas::core::TlsConfiguration>&);
 ErrorCode attach_p2p_server_engine(const std::shared_ptr<ServerEntry>&,
     const std::shared_ptr<ServerEngineEntry>&, const std::shared_ptr<mqas::io::UdpSocket>&, const toml::value&);

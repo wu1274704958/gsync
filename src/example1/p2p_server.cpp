@@ -35,14 +35,14 @@ struct P2PServerState {
 };
 
 ErrorCode prepare_p2p_server(const std::shared_ptr<ServerEntry>& server, GSY_EngineId engine_id,
-    const toml::value& config, sockaddr& address, std::shared_ptr<mqas::io::UdpSocket>& socket,
+    const toml::value& config, mqas::io::SocketAddress& address, std::shared_ptr<mqas::io::UdpSocket>& socket,
     std::shared_ptr<const mqas::core::TlsConfiguration>& tls)
 {
     if (engine_id != 2) return EC_EngineNotMatch;
     socket = gsy_get_socket(server->socket);
     if (!socket) return EC_InvalidHandler;
-    socket->get_sock_addr(address);
-    if (address.sa_family != AF_INET) return EC_InvalidAddress;
+    socket->get_sock_addr(address.storage);
+    if (address.native().sa_family != AF_INET && address.native().sa_family != AF_INET6) return EC_InvalidAddress;
     tls = p2p::make_psk_server_context({}, toml::find<std::string>(config, "engine_config", "alpn"));
     return tls ? EC_Ok : EC_ConnectFailed;
 }

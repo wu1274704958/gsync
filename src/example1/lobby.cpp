@@ -310,12 +310,15 @@ void set_result_data(GSY_HelperResult* result,
             result->ret = EC_Fail;
             return;
         }
-        sockaddr peer_address{};
+        mqas::io::SocketAddress peer_address;
+        const sockaddr* local = nullptr;
+        const sockaddr* remote = nullptr;
         if (!self_id || !msg->peer_id() || self_id == msg->peer_id() || !msg->has_peer_addr() ||
             msg->peer_addr().port() > 65535 || msg->peer_addr().port() == 0 ||
             msg->peer_addr().ip().size() >= sizeof(result->peer_addr.ip) ||
             msg->peer_addr().ip().find('\0') != std::string::npos ||
-            !mqas::io::Ip::str2addr_ipv4(msg->peer_addr().ip().c_str(), static_cast<uint16_t>(msg->peer_addr().port()), peer_address) ||
+            !mqas::io::Ip::str2addr(msg->peer_addr().ip().c_str(), static_cast<uint16_t>(msg->peer_addr().port()), peer_address.storage) ||
+            !lobby->get_sockaddr(&local, &remote) || !local || local->sa_family != peer_address.native().sa_family ||
             msg->psk_secret().size() != 32 || msg->psk_identity().size() != 16 || msg->negotiation_id().size() != 16 ||
             !msg->psk_issued_at_ms() || msg->psk_expires_at_ms() <= msg->psk_issued_at_ms()) {
             result->ret = EC_Fail;
@@ -328,8 +331,7 @@ void set_result_data(GSY_HelperResult* result,
         credential->peer_id = msg->peer_id();
         credential->self_id = self_id;
         credential->is_server = msg->is_server();
-        credential->peer_ip = msg->peer_addr().ip();
-        credential->peer_port = static_cast<uint16_t>(msg->peer_addr().port());
+        credential->peer_address = peer_address;
         credential->issued_at_ms = msg->psk_issued_at_ms();
         credential->expires_at_ms = msg->psk_expires_at_ms();
         result->session_handle = p2p_session_register(owner, sid, std::move(socket), std::move(credential));

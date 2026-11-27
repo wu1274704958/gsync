@@ -17,7 +17,7 @@ struct ConnectAttempt {
     GSY_ConnectionHwnd handle = InvalidConnection;
     std::string path;
     std::shared_ptr<toml::value> config;
-    sockaddr remote{};
+    mqas::io::SocketAddress remote{};
     std::shared_ptr<void> extension;
     std::shared_ptr<mqas::io::UdpSocket> socket;
     std::shared_ptr<const mqas::core::TlsConfiguration> tls;
@@ -100,9 +100,9 @@ ErrorCode prepare_connection_engine(ConnectAttempt& attempt, GSY_EngineId id) {
     }
 
     const auto config = toml::find<mqas::core::engine_config>(*attempt.config, "engine_config");
-    sockaddr bind_addr{};
-    if (!mqas::io::Ip::str2addr_ipv4(config.bind_ip.c_str(), config.port, bind_addr)) return EC_InvalidAddress;
-    EngineKey key{id, mqas::io::Ip::addr2str_ipv4(bind_addr), config.port};
+    mqas::io::SocketAddress bind_addr{};
+    if (!mqas::io::Ip::str2addr(config.bind_ip.c_str(), config.port, bind_addr.storage)) return EC_InvalidAddress;
+    EngineKey key{id, mqas::io::Ip::addr2str(bind_addr), config.port};
     if (config.port != 0) {
         if (server_endpoint_overlaps(bind_addr)) return EC_AlreadyExists;
         if (auto it = engine_map.find(key); it != engine_map.end()) {
@@ -132,7 +132,7 @@ ErrorCode prepare_connection_engine(ConnectAttempt& attempt, GSY_EngineId id) {
             return EC_AlreadyExists;
     auto entry = std::make_shared<EngineEntry>();
     entry->key = key;
-    std::memcpy(&entry->bind_addr, &actual, sizeof(sockaddr_in));
+    entry->bind_addr = mqas::io::SocketAddress(actual).storage;
     entry->engine = engine.get();
     engine->start_recv();
     engine_map.emplace(key, entry);
@@ -215,8 +215,8 @@ ErrorCode connect_internal(GSY_EngineId id, const char* path, const char* ip, sh
     auto code = run<Connect::Validate, I + 1, Config>(*attempt);
     attempt->options = nullptr;
     if (code != EC_Ok) return code;
-    const bool valid_remote = attempt->remote.sa_family != 0 ||
-        (ip && mqas::io::Ip::str2addr_ipv4(ip, port, attempt->remote));
+    const bool valid_remote = attempt->remote.storage.ss_family != 0 ||
+        (ip && mqas::io::Ip::str2addr(ip, static_cast<uint16_t>(port), attempt->remote.storage));
     if (!ip && !valid_remote) return EC_InvalidAddress;
     const auto handle = get_new_connection_hwnd(id);
     if (!handle) return EC_ConnectOverLimit;

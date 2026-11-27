@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
             mqas::core::StreamVariantPair<1, mqas::tools::p2p::P2PLobbyStream>,
             mqas::core::StreamVariantPair<2, mqas::tools::p2p::P2PHelperStream>>;
         mqas::core::sub_engine<mqas::core::engine<mqas::core::Connect<Stream>>> engine(io);
-        engine.init(SERVER_CONFIG_PATH, mqas::core::EngineFlags::Server);
+        engine.init(argc > 3 ? argv[3] : SERVER_CONFIG_PATH, mqas::core::EngineFlags::Server);
         engine.start_recv();
         engine.process_conns();
         auto timer = io.make_shared<mqas::io::Timer>();

@@ -1,7 +1,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
-#include <string>
+#include <mqas/io/ip.h>
 #include <chrono>
 
 // One helper negotiation. Its handle is consumed after successful authentication.
@@ -17,8 +17,7 @@ struct P2PSession {
     uint32_t peer_id = 0;
     uint32_t self_id = 0;
     bool is_server = false;
-    std::string peer_ip;
-    uint16_t peer_port = 0;
+    mqas::io::SocketAddress peer_address;
     uint64_t issued_at_ms = 0;
     uint64_t expires_at_ms = 0;
     bool valid_now() const {

@@ -17,7 +17,7 @@ struct ServerPrepare {
     std::shared_ptr<ServerEntry> server;
     GSY_EngineId engine_id;
     const toml::value& config;
-    sockaddr& address;
+    mqas::io::SocketAddress& address;
     std::shared_ptr<mqas::io::UdpSocket>& socket;
     std::shared_ptr<const mqas::core::TlsConfiguration>& tls;
     bool& address_ready;
@@ -137,7 +137,7 @@ GSY_ServerHwnd launch_server_internal(GSY_EngineId engine_id, const char* config
         try {
             auto parsed = std::make_shared<toml::value>(toml::parse(path));
             mqas::core::engine_driver::normalize_engine_config(parsed, path.c_str());
-            sockaddr bind_addr{};
+            mqas::io::SocketAddress bind_addr{};
             std::shared_ptr<mqas::io::UdpSocket> socket;
             std::shared_ptr<const mqas::core::TlsConfiguration> tls;
             bool address_ready = false;
@@ -148,12 +148,12 @@ GSY_ServerHwnd launch_server_internal(GSY_EngineId engine_id, const char* config
             if (prepare_error != EC_Ok) { fail_server_start(server, prepare_error); return; }
             if (!address_ready) {
                 const auto config = toml::find<mqas::core::engine_config>(*parsed, "engine_config");
-                if (!mqas::io::Ip::str2addr_ipv4(config.bind_ip.c_str(), config.port, bind_addr)) {
+                if (!mqas::io::Ip::str2addr(config.bind_ip.c_str(), config.port, bind_addr.storage)) {
                     fail_server_start(server, EC_InvalidAddress); return;
                 }
             }
             const auto port = mqas::io::Ip::addr_get_port(bind_addr);
-            EngineKey key{engine_id, mqas::io::Ip::addr2str_ipv4(bind_addr), port};
+            EngineKey key{engine_id, mqas::io::Ip::addr2str(bind_addr), port};
             std::shared_ptr<ServerEngineEntry> owner;
             if (port != 0) {
                 if (auto it = server_engines.find(key); it != server_engines.end()) {
@@ -189,7 +189,7 @@ GSY_ServerHwnd launch_server_internal(GSY_EngineId engine_id, const char* config
                     }
                 owner = std::make_shared<ServerEngineEntry>();
                 owner->key = key;
-                std::memcpy(&owner->bind_addr, &engine->get_local_addr(), sizeof(sockaddr_in));
+                owner->bind_addr = mqas::io::SocketAddress(engine->get_local_addr()).storage;
                 owner->engine = engine.get();
                 gsync::stages::ServerEngineReady initialized{server, owner, socket, *parsed};
                 const auto init_error = gsync::stages::run<gsync::stages::Server::InitEngine, I + 1, Config>(initialized);

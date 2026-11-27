@@ -8,8 +8,18 @@ tmp = tempfile.TemporaryDirectory(prefix='gsync-isolated-')
 tmp_path = Path(tmp.name)
 config = (tests_dir / 'test_connect_server' / 'conf.txt').read_text().replace('port=8102', 'port=0')
 config = config.replace('[engine_config]', '[engine_config]\nserver_cert_sha256="7ca282f762eaaa3b7582e858b3c74fbec7ee421bc3448f7a6fb084e27e49a1ef"')
+ipv6 = 'ipv6' in sys.argv[5:]
+host = b'::1' if ipv6 else b'127.0.0.1'
+server_args = [str(lobby_exe), 'server', '30000']
+config = config.replace('bind_ip="0.0.0.0"', f'bind_ip="{host.decode()}"')
+server_text = (tests_dir/'test_launch_server'/'conf.txt').read_text()
+server_text = server_text.replace('bind_ip="0.0.0.0"', f'bind_ip="{host.decode()}"')
+certificate = (tests_dir/'../../mqas/certificate').resolve().as_posix()
+server_text = server_text.replace('../../../mqas/certificate', certificate)
+server_path = tmp_path/'server.toml'; server_path.write_text(server_text)
+server_args.append(str(server_path))
 config_path = tmp_path / 'client.toml'; config_path.write_text(config)
-lobby_server = subprocess.Popen([str(lobby_exe), 'server', '30000'], cwd=tmp_path, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+lobby_server = subprocess.Popen(server_args, cwd=tmp_path, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
     creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
 time.sleep(1)
 U=C.c_uint32; S=C.c_uint64; I=C.c_int; P=C.c_void_p
@@ -39,6 +49,10 @@ READY=C.CFUNCTYPE(None,S,U,S)
 class LC(C.Structure): _fields_=[('reg',REG),('unreg',P),('respond',P),('list',P),('request',P),('error',P),('change',P),('attempt',P),('quit',P),('extend',P),('check',C.c_uint8),('ready',READY)]
 refs=[]; connected={}; registered={}; incoming={}; errors={}; results={}; peerconn={}; peerstreams={}; datagram={}; received=[]; deliveries=[]; stream_creation={}; channel_results={}; channel_requests=[]; rejected_channel_ids=set(); channel_reason=C.create_string_buffer(b"channel denied"); dc=[]
 server_ready_events=[]
+lobby_errors=[]
+LOBBY_ERROR=C.CFUNCTYPE(None,U,S,I,C.c_char_p,U)
+@LOBBY_ERROR
+def lobby_error(conn,sid,code,msg,rid): lobby_errors.append((conn,sid,code,msg,rid))
 @READY
 def p2p_server_ready(sid,peer,session): server_ready_events.append((sid,peer,session))
 @ERR
@@ -91,19 +105,22 @@ def created(code,sid,rid,user):
  stream_creation[rid]=(code,sid)
  if sid: peerstreams[sid]=int(user)
 refs.extend([err,con,dis,failure,stream,reg,request,helper,pstream,dconnected,dreceived,dend,dfail,derror,created,channel_result,channel_request]); gc=GC(err); contexts=[CC(con,dis,failure,stream,stream,None),CC(con,dis,failure,stream,stream,None)]; lc=[LC() for x in range(2)]
-for c in lc: c.reg=reg; c.request=C.cast(request,P); c.quit=C.cast(helper,P); c.ready=p2p_server_ready
+for c in lc: c.reg=reg; c.request=C.cast(request,P); c.quit=C.cast(helper,P); c.ready=p2p_server_ready; c.error=C.cast(lobby_error,P)
 d.GSY_initialize.argtypes=[I,C.POINTER(GC)];d.GSY_connect.argtypes=[U,C.c_char_p,C.c_char_p,C.c_short,C.POINTER(CC)];d.GSY_connect.restype=U
 d.GSY_RegisterToLobby.argtypes=[U,C.c_char_p,C.c_char_p,C.POINTER(LC)];d.GSY_RegisterToLobby.restype=S
 d.GSY_disconnect.argtypes=[U]; d.GSY_terminate.restype=I
 assert d.GSY_initialize(0,C.byref(gc))==0
 try:
  path=os.fsencode(config_path)
- handles=[d.GSY_connect(1,path,b'127.0.0.1',8101,C.byref(contexts[i])) for i in range(2)]
- assert all(handles) and handles[0] != handles[1], handles
- for _ in range(600):
-  if len(connected)==2: break
-  time.sleep(.01)
- assert len(connected)==2 and all(x==0 for x in connected.values()), connected
+ handles=[]
+ for context in contexts:
+  handle=d.GSY_connect(1,path,host,8101,C.byref(context))
+  assert handle and handle not in handles, (handle,handles)
+  handles.append(handle)
+  for _ in range(600):
+   if handle in connected or handle in errors: break
+   time.sleep(.01)
+  assert connected.get(handle)==0, (connected,errors)
  print('handles',handles,flush=True)
  sids=[d.GSY_RegisterToLobby(handles[i],('isolated_'+str(os.getpid())+'_'+str(i)).encode(),b'',C.byref(lc[i])) for i in range(2)]
  for _ in range(600):
@@ -235,20 +252,28 @@ try:
  assert d.GSY_RegisterServerP2PSession(sh,session)==0
  assert d.GSY_RegisterServerP2PSession(sh,session)==1015
  assert d.GSY_CancelServerP2PSession(sh,session)==0
- assert d.GSY_RegisterServerP2PSession(sh,session)==0
- for _ in range(1300):
-  if sh in errors: break
-  time.sleep(.01)
- assert errors.pop(sh,None)==1014, errors
- assert d.GSY_CancelServerP2PSession(sh,session)==1006
- assert d.GSY_RegisterServerP2PSession(sh,session)==0
+ if 'check_timeout' in sys.argv[5:]:
+  assert d.GSY_RegisterServerP2PSession(sh,session)==0
+  for _ in range(1300):
+   if sh in errors: break
+   time.sleep(.01)
+  assert errors.pop(sh,None)==1014, errors
+  assert d.GSY_CancelServerP2PSession(sh,session)==1006
+  assert d.GSY_RegisterServerP2PSession(sh,session)==0
+  assert d.GSY_CancelServerP2PSession(sh,session)==0
+  assert d.GSY_stop_server(sh)==0
+  assert d.GSY_stop_server(sh2)==0
+  print("PASS: expired server session can be registered again", flush=True)
+  sys.exit(0)
+ else:
+  assert d.GSY_RegisterServerP2PSession(sh,session)==0
  assert d.GSY_NotifyP2PServerReady(handles[client],sids[client],session)==1006
  assert d.GSY_NotifyP2PServerReady(handles[server],sids[server]+1,session)==1006
  assert d.GSY_NotifyP2PServerReady(handles[server],sids[server],session)==2
  for _ in range(400):
   if server_ready_events: break
   time.sleep(.01)
- assert server_ready_events==[(sids[client],registered[sids[server]][1],results[sids[client]].session)],server_ready_events
+ assert server_ready_events==[(sids[client],registered[sids[server]][1],results[sids[client]].session)],(server_ready_events,lobby_errors,errors)
  assert d.GSY_NotifyP2PServerReady(handles[server],sids[server],session)==2
  time.sleep(.1)
  assert len(server_ready_events)==1,server_ready_events
@@ -402,7 +427,7 @@ try:
   time.sleep(.01)
  assert (0,sh) in stopped and (0,sh2) in stopped
  time.sleep(.2)
- failed_handle=d.GSY_connect(1,os.fsencode(tmp_path/'missing.toml'),b'127.0.0.1',8101,C.byref(contexts[0]))
+ failed_handle=d.GSY_connect(1,os.fsencode(tmp_path/'missing.toml'),host,8101,C.byref(contexts[0]))
  assert failed_handle and failed_handle not in handles
  for _ in range(500):
   if failed_handle in errors: break
@@ -414,5 +439,7 @@ try:
  assert d.GSY_is_connected(handles[1])==1
  print('PASS: two isolated connections and closing first preserves second',flush=True)
 finally:
+ if sys.exc_info()[0] is AssertionError and (tmp_path/'log.log').exists():
+  print((tmp_path/'log.log').read_text(errors='replace')[-5000:],flush=True)
  print('terminate',d.GSY_terminate(),flush=True)
  lobby_server.terminate(); lobby_server.wait(timeout=5); tmp.cleanup()
