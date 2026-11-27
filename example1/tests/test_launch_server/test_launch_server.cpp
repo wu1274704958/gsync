@@ -1,6 +1,6 @@
 #include <cstdio>
 #include <cstring>
-#include "../../lobby.h"
+#include "gsync/example1/lobby.h"
 #include "gsync/core/runtime.h"
 #include "gsync/core/server.h"
 #include "gsync/example1/p2p_datagram.h"

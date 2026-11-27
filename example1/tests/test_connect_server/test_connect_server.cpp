@@ -1,10 +1,7 @@
 #include <cstdio>
 #include <cstring>
-#include <mqas/comm/binary.hpp>
-#include <mqas/comm/locator.h>
-#include <mqas/tools/stream/MsgDef.h>
 
-#include "../../lobby.h"
+#include "gsync/example1/lobby.h"
 #include "gsync/core/runtime.h"
 #include "gsync/core/connection.h"
 #include "gsync/example1/p2p_datagram.h"

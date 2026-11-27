@@ -10,13 +10,14 @@
 #include "p2p_session_registry.h"
 #include "p2p_session.h"
 #include <openssl/crypto.h>
+#include <mqas/io/timer.h>
 
 
 constexpr uint8_t ContextCheckCode = 192;
 
 ErrorCode GSY_ReleaseP2PSession(GSY_SessionHandle session) {
     if (!is_running) return EC_NotInitialized;
-    return p2p_session_remove(session);
+    return push_task_with_result<ErrorCode>([session] { return p2p_session_remove(session); });
 }
 
 void init_helper_stream(std::shared_ptr<mqas::tools::p2p::P2PHelperClientStream> helper_stream, GSY_LobbyStreamContext* context, GSY_StreamId stream_id, GSY_ConnectionHwnd owner, std::shared_ptr<GSY_PeerId> self_id);
@@ -311,14 +312,14 @@ void set_result_data(GSY_HelperResult* result,
             return;
         }
         mqas::io::SocketAddress peer_address;
-        const sockaddr* local = nullptr;
-        const sockaddr* remote = nullptr;
+        mqas::io::SocketAddress local;
+        if (socket) socket->get_sock_addr(local.storage);
         if (!self_id || !msg->peer_id() || self_id == msg->peer_id() || !msg->has_peer_addr() ||
             msg->peer_addr().port() > 65535 || msg->peer_addr().port() == 0 ||
             msg->peer_addr().ip().size() >= sizeof(result->peer_addr.ip) ||
             msg->peer_addr().ip().find('\0') != std::string::npos ||
             !mqas::io::Ip::str2addr(msg->peer_addr().ip().c_str(), static_cast<uint16_t>(msg->peer_addr().port()), peer_address.storage) ||
-            !lobby->get_sockaddr(&local, &remote) || !local || local->sa_family != peer_address.native().sa_family ||
+            local.native().sa_family != peer_address.native().sa_family ||
             msg->psk_secret().size() != 32 || msg->psk_identity().size() != 16 || msg->negotiation_id().size() != 16 ||
             !msg->psk_issued_at_ms() || msg->psk_expires_at_ms() <= msg->psk_issued_at_ms()) {
             result->ret = EC_Fail;
@@ -334,7 +335,19 @@ void set_result_data(GSY_HelperResult* result,
         credential->peer_address = peer_address;
         credential->issued_at_ms = msg->psk_issued_at_ms();
         credential->expires_at_ms = msg->psk_expires_at_ms();
-        result->session_handle = p2p_session_register(owner, sid, std::move(socket), std::move(credential));
+        std::shared_ptr<P2PSocketLease> lease;
+        if (msg->use_non_lobby_socket())
+            lease = std::make_shared<P2PSocketLease>(socket, io_cxt->make_shared<mqas::io::Timer>());
+        result->session_handle = p2p_session_register(owner, sid, socket, credential, lease);
+        if (lease && result->session_handle != GSY_INVALID_SESSION_HANDLE) {
+            const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            const auto delay = credential->expires_at_ms > now ? credential->expires_at_ms - now : 0;
+            // Destroy the timer on the next I/O turn, after its callback has returned.
+            lease->expiry->start([handle = result->session_handle](mqas::io::Timer*) {
+                push_task([handle] { p2p_session_expire(handle); }, true);
+            }, delay, 0);
+        }
         if (result->session_handle == GSY_INVALID_SESSION_HANDLE) result->ret = EC_Fail;
     }
     result->peer_id = msg->peer_id();

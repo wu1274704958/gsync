@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-    enum { GSY_CONTEXT_P2P_CONNECT = 1, GSY_CONTEXT_P2P_SERVER = 2 };
+    enum { GSY_CONTEXT_P2P_CONNECT = 1, GSY_CONTEXT_P2P_SERVER = 2, GSY_CONTEXT_P2P_SESSION_SERVER = 3 };
 
     typedef struct GSY_P2PConnectOptions {
         GSY_ContextExtension header;
@@ -23,6 +23,13 @@ extern "C" {
         GSY_SocketHandle socket;
         GSY_P2PStreamPolicy stream_policy;
     } GSY_P2PServerOptions;
+
+    /* Launch on the negotiated socket. Register the session after server startup. */
+    typedef struct GSY_P2PSessionServerOptions {
+        GSY_ContextExtension header;
+        GSY_SessionHandle session;
+        GSY_P2PStreamPolicy stream_policy;
+    } GSY_P2PSessionServerOptions;
 
     /* Available after the P2P connection has been authenticated. */
     ErrorCode GSYNC_EXTERN GSY_GetConnectionP2PPeerId(GSY_ConnectionHwnd, GSY_PeerId*);

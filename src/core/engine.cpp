@@ -55,11 +55,10 @@ int GSY_terminate()
     shutdown_outbound_connections();
     push_task_with_result<int>([] { shutdown_server_engines(); return 0; }, true);
     wait_for_server_shutdown();
-    push_task_with_result<int>([] { gsy_socket_handles_shutdown(); return 0; }, true);
+    push_task_with_result<int>([] { gsy_socket_handles_shutdown(); p2p_session_shutdown(); return 0; }, true);
     is_running = false;
     uv_async_send(&async_task_handle);
     main_thread->join();
-    p2p_session_shutdown();
     is_context_initialized.store(false, std::memory_order_release);
     // destroy all
     for (const auto &engine: engine_map | std::views::values) {

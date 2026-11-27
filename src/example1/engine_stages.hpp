@@ -86,6 +86,15 @@ inline ErrorCode clean_p2p_connection(ConnectAttempt& attempt) {
 }
 inline ErrorCode configure_p2p_server(ServerStart& frame) {
     if (!frame.context->options) return EC_Ok;
+    if (frame.context->options->type == GSY_CONTEXT_P2P_SESSION_SERVER) {
+        if (frame.context->options->size < sizeof(GSY_P2PSessionServerOptions)) return EC_Fail;
+        const auto* option = reinterpret_cast<const GSY_P2PSessionServerOptions*>(frame.context->options);
+        if (option->session == GSY_INVALID_SESSION_HANDLE) return EC_InvalidHandler;
+        frame.server->use_p2p = true;
+        frame.server->listen_session = option->session;
+        frame.server->stream_policy = option->stream_policy;
+        return EC_Ok;
+    }
     if (frame.context->options->type != GSY_CONTEXT_P2P_SERVER ||
         frame.context->options->size < sizeof(GSY_P2PServerOptions)) return EC_Fail;
     const auto* option = reinterpret_cast<const GSY_P2PServerOptions*>(frame.context->options);

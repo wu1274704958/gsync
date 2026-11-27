@@ -72,6 +72,17 @@ int main() {
     });
     for (auto& thread : threads) thread.join();
     ok &= valid.load();
+    auto additional = std::make_shared<mqas::io::UdpSocket>();
+    std::weak_ptr<mqas::io::UdpSocket> observed = additional;
+    session->is_server = true;
+    session->expires_at_ms = UINT64_MAX;
+    const auto lease = p2p_session_register(1, 12, additional, session,
+        std::make_shared<P2PSocketLease>(additional, nullptr));
+    additional.reset();
+    ok &= !observed.expired() && p2p_session_server_socket(lease, additional) == EC_Ok;
+    additional.reset();
+    p2p_session_expire(lease);
+    ok &= observed.expired() && p2p_session_server_socket(lease, additional) == EC_InvalidHandler;
     const auto stale = p2p_session_register(1, 9, socket, session);
     p2p_session_shutdown();
     ok &= p2p_session_remove(stale) == EC_InvalidHandler;

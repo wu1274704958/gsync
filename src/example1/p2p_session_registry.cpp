@@ -9,6 +9,7 @@ struct Entry {
     GSY_StreamId stream;
     std::weak_ptr<mqas::io::UdpSocket> socket;
     std::shared_ptr<const P2PSession> session;
+    std::shared_ptr<P2PSocketLease> socket_lease;
     bool in_use = false;
     bool server_registered = false;
 };
@@ -22,12 +23,12 @@ std::string ready_key(GSY_ConnectionHwnd owner, GSY_StreamId stream, uint32_t pe
 }
 }
 GSY_SessionHandle p2p_session_register(GSY_ConnectionHwnd owner, GSY_StreamId stream,
-    const std::shared_ptr<mqas::io::UdpSocket>& socket, std::shared_ptr<const P2PSession> session) {
+    const std::shared_ptr<mqas::io::UdpSocket>& socket, std::shared_ptr<const P2PSession> session, std::shared_ptr<P2PSocketLease> socket_lease) {
     if (!socket || !session) return GSY_INVALID_SESSION_HANDLE;
     std::lock_guard lock(entries_mutex);
     if (next_handle == GSY_INVALID_SESSION_HANDLE) return GSY_INVALID_SESSION_HANDLE;
     const auto handle = next_handle++;
-    entries.emplace(handle, Entry{owner, stream, socket, std::move(session)});
+    entries.emplace(handle, Entry{owner, stream, socket, std::move(session), std::move(socket_lease)});
     const auto& s = *entries.at(handle).session;
     const std::string id(reinterpret_cast<const char*>(s.negotiation_id.data()), s.negotiation_id.size());
     if (!s.is_server && early_ready.erase(ready_key(owner, stream, s.peer_id, id))) ready.insert(handle);
@@ -61,6 +62,15 @@ GSY_SessionHandle p2p_session_mark_ready(GSY_ConnectionHwnd owner, GSY_StreamId 
 bool p2p_session_take_ready(GSY_SessionHandle handle) {
     std::lock_guard lock(entries_mutex); return ready.erase(handle) != 0;
 }
+ErrorCode p2p_session_server_socket(GSY_SessionHandle handle, std::shared_ptr<mqas::io::UdpSocket>& socket) {
+    std::lock_guard lock(entries_mutex);
+    const auto it = entries.find(handle);
+    if (it == entries.end()) return EC_InvalidHandler;
+    if (!it->second.session->valid_now()) return EC_Timeout;
+    if (!it->second.session->is_server) return EC_Fail;
+    socket = it->second.socket.lock();
+    return socket ? EC_Ok : EC_InvalidHandler;
+}
 ErrorCode p2p_session_acquire(GSY_SessionHandle handle, std::shared_ptr<mqas::io::UdpSocket>& socket,
     std::shared_ptr<const P2PSession>& session) {
     socket.reset(); session.reset();
@@ -85,6 +95,11 @@ bool p2p_session_consume(GSY_SessionHandle handle, const std::shared_ptr<const P
     if (it == entries.end() || !it->second.in_use || it->second.session != session) return false;
     ready.erase(handle); entries.erase(it);
     return true;
+}
+void p2p_session_expire(GSY_SessionHandle handle) {
+    std::lock_guard lock(entries_mutex);
+    ready.erase(handle);
+    entries.erase(handle);
 }
 ErrorCode p2p_session_remove(GSY_SessionHandle handle) {
     std::lock_guard lock(entries_mutex);

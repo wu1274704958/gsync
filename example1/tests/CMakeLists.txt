@@ -88,6 +88,17 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME p2p_unauthenticated_rejected COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test_stream_examples.py p2p
         $<TARGET_FILE:test_launch_server> $<TARGET_FILE:test_connect_server>)
+    if(MQAS_TEST_IPV6_LOOPBACK)
+        add_test(NAME p2p_ipv6_fallback COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_ipv6_fallback.py $<TARGET_FILE:gsync_e1>
+            $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/p2p_isolated_config.toml)
+        add_test(NAME p2p_ipv6_bind_failure COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_ipv6_fallback.py $<TARGET_FILE:gsync_e1>
+            $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/p2p_isolated_config.toml bind-failure)
+        set_tests_properties(p2p_ipv6_fallback p2p_ipv6_bind_failure PROPERTIES TIMEOUT 40 RUN_SERIAL TRUE)
+    endif()
     add_test(NAME p2p_basic_server COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_p2p.py $<TARGET_FILE:gsync_e1>
         $<TARGET_FILE:test_lobby_registration> ${CMAKE_CURRENT_SOURCE_DIR}

@@ -18,6 +18,7 @@
 #include "gsync/example1/p2p_context.h"
 #include "gsync/core/types.h"
 #include "uv.h"
+#include <mqas/io/ip.h>
 #include "gsync/core/runtime.h"
 #include "mqas/context.h"
 
@@ -90,6 +91,7 @@ struct ServerEntry {
     GSY_BaseServerContext* ctx = nullptr;
     bool use_p2p = false;
     GSY_SocketHandle socket = GSY_INVALID_SOCKET;
+    GSY_SessionHandle listen_session = GSY_INVALID_SESSION_HANDLE;
     GSY_P2PStreamPolicy stream_policy = nullptr;
     std::atomic_bool stopping{false};
     bool started = false;

@@ -39,7 +39,10 @@ ErrorCode prepare_p2p_server(const std::shared_ptr<ServerEntry>& server, GSY_Eng
     std::shared_ptr<const mqas::core::TlsConfiguration>& tls)
 {
     if (engine_id != 2) return EC_EngineNotMatch;
-    socket = gsy_get_socket(server->socket);
+    if (server->listen_session != GSY_INVALID_SESSION_HANDLE) {
+        const auto error = p2p_session_server_socket(server->listen_session, socket);
+        if (error != EC_Ok) return error;
+    } else socket = gsy_get_socket(server->socket);
     if (!socket) return EC_InvalidHandler;
     socket->get_sock_addr(address.storage);
     if (address.native().sa_family != AF_INET && address.native().sa_family != AF_INET6) return EC_InvalidAddress;
